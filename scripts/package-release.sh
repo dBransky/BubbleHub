@@ -96,10 +96,17 @@ ShowInstDetails show
 
 Section "Install AgeOS"
   DetailPrint "Installing AgeOS ${VERSION_TAG} through PowerShell and WSL..."
-  ExecWait 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "\$ErrorActionPreference = ''Stop''; \$env:AGEOS_VERSION = ''${VERSION_TAG}''; irm ''${install_url}'' | iex"' \$0
-  IntCmp \$0 0 done
-    MessageBox MB_ICONSTOP "AgeOS installer failed with exit code \$0."
-    SetErrorLevel \$0
+  StrCpy \$0 "\$TEMP\\ageos-install.ps1"
+  FileOpen \$1 "\$0" w
+  FileWrite \$1 "\$\$ErrorActionPreference = 'Stop'\$\r\$\n"
+  FileWrite \$1 "\$\$env:AGEOS_VERSION = '${VERSION_TAG}'\$\r\$\n"
+  FileWrite \$1 "irm '${install_url}' | iex\$\r\$\n"
+  FileClose \$1
+  ExecWait \`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\$0"\` \$2
+  Delete "\$0"
+  IntCmp \$2 0 done
+    MessageBox MB_ICONSTOP "AgeOS installer failed with exit code \$2."
+    SetErrorLevel \$2
     Quit
   done:
 SectionEnd
