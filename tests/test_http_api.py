@@ -3,7 +3,6 @@ from ageos.http_api import (
     chat_completion_payload,
     create_http_server,
     embeddings_payload,
-    fallback_embeddings,
     messages_from_responses_input,
     normalize_chat_messages,
     normalize_embeddings_input,
@@ -82,16 +81,9 @@ def test_embeddings_helpers_accept_openai_inputs() -> None:
     assert payload["usage"]["total_tokens"] == 0
 
 
-def test_fallback_embeddings_are_stable_and_sized() -> None:
-    first = fallback_embeddings(["hello world"], dimensions=8)
-    second = fallback_embeddings(["hello world"], dimensions=8)
-    assert first == second
-    assert len(first[0]) == 8
-
-
 def test_openai_provider_prefix_resolves_known_specialty() -> None:
-    assert _resolve_specialty_alias("openai/default-instruct", "fallback") == "default-instruct"
-    assert _resolve_specialty_alias("openai/not-ageos", "fallback") == "fallback"
+    assert _resolve_specialty_alias("openai/default-instruct", "default-instruct") == "default-instruct"
+    assert _resolve_specialty_alias("openai/not-ageos", "default-instruct") == "default-instruct"
 
 
 def test_chat_completions_stream_returns_sse() -> None:
@@ -121,7 +113,7 @@ def test_chat_completions_stream_returns_sse() -> None:
         server.server_close()
 
 
-def test_chat_completions_reuse_server_session() -> None:
+def test_chat_completions_call_native_session_per_request() -> None:
     server = create_http_server(ApiConfig(port=0))
     port = server.server_address[1]
     thread = Thread(target=server.serve_forever, daemon=True)
@@ -140,29 +132,54 @@ def test_chat_completions_reuse_server_session() -> None:
                     timeout=5,
                 )
                 assert response.status_code == 200
-        assert session_cls.call_count == 1
+        assert session_cls.call_count == 2
+        assert session.chat.call_count == 2
     finally:
         server.shutdown()
         server.server_close()
 
 
-def test_chat_completions_recreates_dead_cached_session() -> None:
+def test_chat_completions_leave_cache_ownership_to_native_session() -> None:
     server = create_http_server(ApiConfig(port=0))
     port = server.server_address[1]
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        stale_manager = MagicMock()
-        stale_session = stale_manager.__enter__.return_value
-        stale_session.chat.side_effect = requests.ConnectionError("dead backend")
-        stale_manager.resolved = SimpleNamespace(model=SimpleNamespace(name="mistral-instruct-small"))
+        with patch("ageos.http_api.EngineSession") as session_cls:
+            manager = session_cls.return_value
+            session = manager.__enter__.return_value
+            session.chat.side_effect = ["first", "second", "third"]
 
-        fresh_manager = MagicMock()
-        fresh_session = fresh_manager.__enter__.return_value
-        fresh_session.chat.return_value = "hello"
-        fresh_manager.resolved = SimpleNamespace(model=SimpleNamespace(name="mistral-instruct-small"))
+            for message in ["one", "two", "three"]:
+                response = requests.post(
+                    f"http://127.0.0.1:{port}/v1/chat/completions",
+                    json={
+                        "model": "ageos-local",
+                        "ageos_specialty": "default-instruct",
+                        "messages": [{"role": "user", "content": message}],
+                    },
+                    timeout=5,
+                )
+                assert response.status_code == 200
 
-        with patch("ageos.http_api.EngineSession", side_effect=[stale_manager, fresh_manager]) as session_cls:
+        assert session_cls.call_count == 3
+        session_cls.assert_called_with("default-instruct", niceness=0, status_callback=None)
+        assert manager.__enter__.call_count == 3
+        assert session.chat.call_count == 3
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_chat_completions_returns_gateway_error_for_native_session_failure() -> None:
+    server = create_http_server(ApiConfig(port=0))
+    port = server.server_address[1]
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with patch("ageos.http_api.EngineSession") as session_cls:
+            session = session_cls.return_value.__enter__.return_value
+            session.chat.side_effect = requests.ConnectionError("dead backend")
             response = requests.post(
                 f"http://127.0.0.1:{port}/v1/chat/completions",
                 json={
@@ -172,11 +189,8 @@ def test_chat_completions_recreates_dead_cached_session() -> None:
                 timeout=5,
             )
 
-        assert response.status_code == 200
-        assert response.json()["choices"][0]["message"]["content"] == "hello"
-        assert session_cls.call_count == 2
-        stale_manager.__exit__.assert_called_once()
-        stale_manager.scheduler.evict_model.assert_called_once_with("mistral-instruct-small")
+        assert response.status_code == 502
+        assert session_cls.call_count == 1
     finally:
         server.shutdown()
         server.server_close()

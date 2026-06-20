@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from importlib import resources
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
-import yaml
 
 from ageos.cli.main import app
 from ageos.native import LibAgeosError
@@ -94,14 +92,19 @@ def test_scheduler_limits_load_from_user_config(tmp_path: Path, monkeypatch: pyt
     assert limits["vram_bytes"] == 3 * 1024**3
 
 
-def test_scheduler_limits_load_from_bundled_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_scheduler_limits_load_from_explicit_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
-    expected = _bundled_scheduler_limits()
+    config_path = tmp_path / "custom-models.yaml"
+    config_path.write_text(
+        "scheduler:\n  ram_limit_gb: 11\n  vram_limit_gb: 5\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGEOS_MODELS_CONFIG", str(config_path))
 
     limits = SchedulerClient.local().resource_limits()
-    assert limits["ram_bytes"] == expected["ram_limit_gb"] * 1024**3
-    assert limits["vram_bytes"] == expected["vram_limit_gb"] * 1024**3
+    assert limits["ram_bytes"] == 11 * 1024**3
+    assert limits["vram_bytes"] == 5 * 1024**3
 
 
 def test_models_stop_evicts_all_loaded_models(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,14 +128,3 @@ def test_missing_libageos_raises_actionable_error(monkeypatch: pytest.MonkeyPatc
     with pytest.raises(LibAgeosError, match="libageos.so is required"):
         native._load_libageos()
 
-
-def _bundled_scheduler_limits() -> dict[str, int]:
-    with resources.files("ageos.config").joinpath("models.yaml").open("r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle)
-    assert isinstance(data, dict)
-    scheduler = data.get("scheduler")
-    assert isinstance(scheduler, dict)
-    return {
-        "ram_limit_gb": int(scheduler["ram_limit_gb"]),
-        "vram_limit_gb": int(scheduler["vram_limit_gb"]),
-    }

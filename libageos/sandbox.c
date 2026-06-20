@@ -499,6 +499,15 @@ static int relative_workdir(const char *workdir, const char *root_dir, char *buf
     if (workdir == NULL || workdir[0] == '\0' || strcmp(workdir, root_dir) == 0) {
         return 0;
     }
+    const char *workspace_mount = "/workspace";
+    size_t workspace_len = strlen(workspace_mount);
+    if (strcmp(workdir, workspace_mount) == 0) {
+        return 0;
+    }
+    if (strncmp(workdir, workspace_mount, workspace_len) == 0 && workdir[workspace_len] == '/') {
+        int written = snprintf(buffer, buffer_size, "%s", workdir + workspace_len + 1);
+        return (written < 0 || (size_t)written >= buffer_size) ? -ENAMETOOLONG : 0;
+    }
     size_t root_len = strlen(root_dir);
     if (strncmp(workdir, root_dir, root_len) != 0 || workdir[root_len] != '/') {
         return -EINVAL;
@@ -716,6 +725,7 @@ static int setup_sandbox_home(
     if (chdir(workspace_cwd) != 0) {
         return -errno;
     }
+    setenv("PWD", workspace_cwd, 1);
 
     char tmp_path[PATH_MAX];
     written = snprintf(tmp_path, sizeof(tmp_path), "%s/tmp", visible_home_path);

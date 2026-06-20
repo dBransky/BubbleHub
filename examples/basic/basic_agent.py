@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 from ageos.integrations.openai_shim import AgeosOpenAI
 
@@ -35,6 +36,16 @@ def main() -> int:
     print("model_response:")
     print(answer)
     print("AgeOS basic agent finished")
+    home = Path(os.environ.get("HOME", "."))
+    test_path = home / "test.txt"
+    if test_path.exists():
+        print(f"existing_home_data={test_path.read_text(encoding='utf-8')}")
+    else:
+        print("existing_home_data=<missing>")
+    print(f"Writing data to home directory {home}")
+    with test_path.open("w", encoding="utf-8") as f:
+        f.write("Hello, world!")
+    print("Data written to home directory")
     return 0
 
 

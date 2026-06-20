@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -12,6 +14,11 @@ import typer
 
 from ageos.inference import apply_inference_env
 from ageos.node.client import SchedulerClient
+
+_AGENT_ID_RE = re.compile(r"^agt-[A-Za-z0-9_-]+$")
+_AGEOS_DIR = ".ageos"
+_AGENTS_DIR = "agents"
+_CURRENT_AGENT_FILE = "current-agent"
 
 
 def command(
@@ -29,7 +36,12 @@ def command(
         dir_okay=True,
         help="Writable directory exposed inside the sandbox. Defaults to an empty /workspace.",
     ),
-    unsafe_no_sandbox: bool = typer.Option(False, "--unsafe-no-sandbox", help="Development fallback only."),
+    force_new_sandbox: bool = typer.Option(
+        False,
+        "--force-new-sandbox",
+        help="Discard any persistent sandbox under --root-dir and start with a new agent home.",
+    ),
+    unsafe_no_sandbox: bool = typer.Option(False, "--unsafe-no-sandbox", help="Development escape hatch only."),
 ) -> None:
     """Run a binary as an AgeOS agent inside the hardened sandbox."""
 
@@ -42,6 +54,7 @@ def command(
         speciality=speciality,
         workdir=workdir,
         root_dir=root_dir,
+        force_new_sandbox=force_new_sandbox,
         unsafe_no_sandbox=unsafe_no_sandbox,
     )
 
@@ -57,6 +70,7 @@ def run_agent(
     workdir: Path | None,
     root_dir: Path | None = None,
     unsafe_no_sandbox: bool = False,
+    force_new_sandbox: bool = False,
 ) -> None:
     """Run a binary as an AgeOS agent inside the hardened sandbox."""
 
@@ -64,7 +78,17 @@ def run_agent(
     sandbox_paths = _resolve_sandbox_paths(root_dir, workdir)
     cwd_path = sandbox_paths.host_workdir
     resolved_binary = _resolve_binary(binary, cwd_path)
-    agent_id = client.register_agent(str(resolved_binary), niceness=niceness, specialty=speciality)
+    persistent = _select_persistent_sandbox(sandbox_paths.host_root_dir, force_new=force_new_sandbox)
+    agent_id = client.register_agent(
+        str(resolved_binary),
+        niceness=niceness,
+        specialty=speciality,
+        agent_id=persistent.agent_id,
+    )
+    _record_persistent_sandbox(sandbox_paths.host_root_dir, agent_id)
+    if persistent.reused:
+        typer.echo(f"Persistent sandbox found: reusing {agent_id}")
+    sandbox_binary = _sandbox_path_for_host_path(resolved_binary, sandbox_paths, agent_id)
     env = os.environ.copy()
     env["AGEOS_AGENT_ID"] = agent_id
     env["AGEOS_NICENESS"] = str(niceness)
@@ -73,17 +97,18 @@ def run_agent(
     endpoint = apply_inference_env(env, speciality)
     typer.echo(f"Using AgeOS inference endpoint at {endpoint}")
     cwd = sandbox_paths.sandbox_workdir
-    target_args = [*_argv_for_binary(resolved_binary), *extra_args]
+    sandbox_args = [*_argv_for_binary(sandbox_binary), *extra_args]
+    host_args = [*_argv_for_binary(resolved_binary), *extra_args]
     try:
         if platform.system() != "Linux" and not unsafe_no_sandbox:
             raise typer.BadParameter("ageos run sandbox is Linux-only; use --unsafe-no-sandbox for local development")
         if unsafe_no_sandbox:
-            raise typer.Exit(subprocess.call(target_args, cwd=cwd, env=env))
+            raise typer.Exit(subprocess.call(host_args, cwd=sandbox_paths.host_workdir, env=env))
         inference = _sandbox_inference_endpoint(endpoint)
         _apply_sandbox_inference_env(env, inference)
         exit_code = _run_native_sandbox(
             client,
-            target_args,
+            sandbox_args,
             memory=memory,
             cpu=cpu,
             niceness=niceness,
@@ -100,9 +125,80 @@ def run_agent(
         client.deregister_agent(agent_id)
 
 
+@dataclass(frozen=True)
+class PersistentSandbox:
+    agent_id: str | None
+    reused: bool = False
+
+
+def _select_persistent_sandbox(root_dir: str | None, *, force_new: bool) -> PersistentSandbox:
+    if root_dir is None:
+        return PersistentSandbox(agent_id=None)
+    root = Path(root_dir)
+    agent_id = _find_persistent_agent_id(root)
+    if agent_id is None:
+        return PersistentSandbox(agent_id=None)
+    if force_new:
+        _remove_persistent_agent(root, agent_id)
+        return PersistentSandbox(agent_id=None)
+    return PersistentSandbox(agent_id=agent_id, reused=True)
+
+
+def _find_persistent_agent_id(root: Path) -> str | None:
+    ageos_dir = root / _AGEOS_DIR
+    agents_dir = ageos_dir / _AGENTS_DIR
+    marker = ageos_dir / _CURRENT_AGENT_FILE
+    if marker.is_file():
+        agent_id = marker.read_text(encoding="utf-8").strip()
+        if _is_persistent_agent_dir(agents_dir / agent_id):
+            return agent_id
+
+    if not agents_dir.is_dir():
+        return None
+    candidates = [path for path in agents_dir.iterdir() if _is_persistent_agent_dir(path)]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda path: path.stat().st_mtime_ns, reverse=True)
+    return candidates[0].name
+
+
+def _record_persistent_sandbox(root_dir: str | None, agent_id: str) -> None:
+    if root_dir is None:
+        return
+    ageos_dir = Path(root_dir) / _AGEOS_DIR
+    ageos_dir.mkdir(mode=0o700, exist_ok=True)
+    (ageos_dir / _CURRENT_AGENT_FILE).write_text(f"{agent_id}\n", encoding="utf-8")
+
+
+def _remove_persistent_agent(root: Path, agent_id: str) -> None:
+    agents_dir = root / _AGEOS_DIR / _AGENTS_DIR
+    agent_dir = agents_dir / agent_id
+    if not _is_persistent_agent_dir(agent_dir):
+        return
+    resolved_agents = agents_dir.resolve()
+    resolved_agent = agent_dir.resolve()
+    if resolved_agent.parent != resolved_agents:
+        raise typer.BadParameter("persistent sandbox path escaped .ageos/agents")
+    shutil.rmtree(resolved_agent)
+
+
+def _is_persistent_agent_dir(path: Path) -> bool:
+    return (
+        path.is_dir()
+        and not path.is_symlink()
+        and _is_valid_agent_id(path.name)
+        and (path / "home").is_dir()
+        and not (path / "home").is_symlink()
+    )
+
+
+def _is_valid_agent_id(agent_id: str) -> bool:
+    return bool(_AGENT_ID_RE.fullmatch(agent_id))
+
+
 def _resolve_binary(binary: str, cwd: Path) -> Path:
     candidate = Path(binary).expanduser()
-    if candidate.is_absolute() or candidate.parent != Path("."):
+    if candidate.is_absolute() or candidate.parent != Path(".") or binary.startswith(("./", "../")):
         paths = [candidate] if candidate.is_absolute() else [Path.cwd() / candidate, cwd / candidate]
         for path in paths:
             resolved = path.resolve()
@@ -121,10 +217,22 @@ def _resolve_binary(binary: str, cwd: Path) -> Path:
     raise typer.BadParameter(f"binary not found on PATH or node_modules/.bin: {binary}")
 
 
-def _argv_for_binary(binary: Path) -> list[str]:
-    if binary.suffix == ".py":
-        return [_ageos_python(), str(binary)]
-    return [str(binary)]
+def _sandbox_path_for_host_path(path: Path, sandbox_paths: "SandboxPaths", agent_id: str) -> Path:
+    if sandbox_paths.host_root_dir is None:
+        return path
+    host_root = Path(sandbox_paths.host_root_dir)
+    if not _is_relative_to(path, host_root):
+        raise typer.BadParameter("--binary must be inside --root-dir")
+    relative = path.relative_to(host_root)
+    return Path("/home") / agent_id / "workspace" / relative
+
+
+def _argv_for_binary(binary: Path | str) -> list[str]:
+    binary_path = Path(binary)
+    binary_text = binary_path.as_posix()
+    if binary_path.suffix == ".py":
+        return [_ageos_python(), binary_text]
+    return [binary_text]
 
 
 def _ageos_python() -> str:
@@ -212,9 +320,13 @@ def _resolve_sandbox_paths(root_dir: Path | None, workdir: Path | None) -> Sandb
     resolved_workdir = (workdir.expanduser().resolve() if workdir is not None else resolved_root)
     if not _is_relative_to(resolved_workdir, resolved_root):
         raise typer.BadParameter("--workdir must be inside --root-dir")
+    relative_workdir = resolved_workdir.relative_to(resolved_root)
+    sandbox_workdir = "/workspace"
+    if relative_workdir != Path("."):
+        sandbox_workdir = f"/workspace/{relative_workdir.as_posix()}"
     return SandboxPaths(
         host_workdir=resolved_workdir,
-        sandbox_workdir=str(resolved_workdir),
+        sandbox_workdir=sandbox_workdir,
         host_root_dir=str(resolved_root),
     )
 

@@ -46,8 +46,15 @@ class SchedulerClient:
     def mark_model_unloaded(self, name: str) -> None:
         self.native.mark_model_unloaded(name)
 
-    def register_agent(self, binary: str, niceness: int, specialty: str | None = None, pid: int | None = None) -> str:
-        agent_id = f"agt-{uuid.uuid4().hex[:10]}"
+    def register_agent(
+        self,
+        binary: str,
+        niceness: int,
+        specialty: str | None = None,
+        pid: int | None = None,
+        agent_id: str | None = None,
+    ) -> str:
+        agent_id = agent_id or f"agt-{uuid.uuid4().hex[:10]}"
         self.native.register_agent(agent_id, pid or os.getpid(), binary, niceness, specialty)
         return agent_id
 
@@ -79,6 +86,9 @@ class SchedulerClient:
     def evict_model(self, name: str) -> None:
         self.native.evict_model(name)
 
+    def inference_chat(self, request: dict[str, object]) -> dict[str, object]:
+        return self.native.inference_chat(request)
+
 
 def _configured_limits() -> tuple[float | None, float | None]:
     with resources.files("ageos.config").joinpath("models.yaml").open("r", encoding="utf-8") as handle:
@@ -86,6 +96,12 @@ def _configured_limits() -> tuple[float | None, float | None]:
     override_path = Path.home() / ".config" / "ageos" / "models.yaml"
     if override_path.exists():
         with override_path.open("r", encoding="utf-8") as handle:
+            override = yaml.safe_load(handle)
+        if isinstance(data, dict) and isinstance(override, dict):
+            data = {**data, **override}
+    explicit_path = os.environ.get("AGEOS_MODELS_CONFIG")
+    if explicit_path:
+        with Path(explicit_path).expanduser().open("r", encoding="utf-8") as handle:
             override = yaml.safe_load(handle)
         if isinstance(data, dict) and isinstance(override, dict):
             data = {**data, **override}

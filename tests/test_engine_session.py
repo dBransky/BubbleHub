@@ -4,7 +4,7 @@ from pathlib import Path
 
 from ageos.engine.registry import ModelSpec
 from ageos.engine.session import EngineSession
-from ageos.native import Admission, HardwareInfo
+from ageos.native import HardwareInfo
 
 
 GPU_MODEL = ModelSpec(
@@ -47,28 +47,41 @@ VLLM_MODEL = ModelSpec(
 )
 
 
-def test_engine_session_falls_back_when_gpu_admission_denied(monkeypatch) -> None:
-    scheduler = FakeScheduler(deny={"gpu-model"})
+def test_engine_session_calls_native_inference(monkeypatch) -> None:
+    scheduler = FakeScheduler()
     _patch_session_dependencies(monkeypatch, [GPU_MODEL, CPU_MODEL])
 
     with EngineSession("default-instruct", scheduler=scheduler) as session:
         assert session.resolved is not None
-        assert session.resolved.model.name == "cpu-model"
+        assert session.resolved.model.name == "gpu-model"
+        assert session.chat([{"role": "user", "content": "hi"}], max_tokens=42) == "native"
 
-    assert scheduler.loaded == ["cpu-model"]
-    assert "gpu-model" in scheduler.evicted
+    assert scheduler.requests == [
+        {
+            "specialty": "default-instruct",
+            "model_name": "gpu-model",
+            "backend": "llama",
+            "model_path": "/models/gpu-model",
+            "ram_gb": 8,
+            "vram_gb": 6,
+            "niceness": 0,
+            "max_tokens": 42,
+            "gpu_layers": -999999,
+            "messages_json": '[{"role": "user", "content": "hi"}]',
+        }
+    ]
 
 
-def test_engine_session_falls_back_when_gpu_backend_fails(monkeypatch) -> None:
+def test_engine_session_does_not_mark_python_model_lifecycle(monkeypatch) -> None:
     scheduler = FakeScheduler()
-    _patch_session_dependencies(monkeypatch, [VLLM_MODEL, CPU_MODEL], fail_vllm=True)
+    _patch_session_dependencies(monkeypatch, [CPU_MODEL])
 
     with EngineSession("default-instruct", scheduler=scheduler) as session:
-        assert session.resolved is not None
-        assert session.resolved.model.name == "cpu-model"
+        session.chat([{"role": "user", "content": "hi"}])
 
-    assert scheduler.loaded == ["cpu-model"]
-    assert "vllm-model" in scheduler.evicted
+    assert scheduler.loaded == []
+    assert scheduler.unloaded == []
+    assert scheduler.evicted == []
 
 
 class FakeRegistry:
@@ -80,28 +93,14 @@ class FakeRegistry:
 
 
 class FakeScheduler:
-    def __init__(self, deny: set[str] | None = None) -> None:
-        self.deny = deny or set()
+    def __init__(self) -> None:
         self.loaded: list[str] = []
+        self.unloaded: list[str] = []
         self.evicted: list[str] = []
+        self.requests: list[dict[str, object]] = []
 
     def resource_limits(self) -> dict[str, int]:
         return {"ram_bytes": 64 * 1024**3, "vram_bytes": 24 * 1024**3}
-
-    def admit_model_job(
-        self,
-        specialty: str,
-        model_name: str,
-        niceness: int,
-        ram_gb: float,
-        vram_gb: float,
-    ) -> Admission:
-        if model_name in self.deny:
-            return Admission(False, "available", "not enough VRAM")
-        return Admission(True, "available")
-
-    def status_snapshot(self) -> dict[str, object]:
-        return {"models": []}
 
     def mark_model_loaded(
         self,
@@ -116,10 +115,14 @@ class FakeScheduler:
         self.loaded.append(name)
 
     def mark_model_unloaded(self, name: str) -> None:
-        pass
+        self.unloaded.append(name)
 
     def evict_model(self, name: str) -> None:
         self.evicted.append(name)
+
+    def inference_chat(self, request: dict[str, object]) -> dict[str, object]:
+        self.requests.append(request)
+        return {"content": "native"}
 
 
 class FakeDownloader:
@@ -127,27 +130,9 @@ class FakeDownloader:
         return Path(f"/models/{model.name}")
 
 
-class FakeLlamaBackend:
-    pid = 1234
-    port = 5001
-
-    def start(self, model: ModelSpec, model_path: str, niceness: int = 0) -> None:
-        pass
-
-
-class FailingVllmBackend:
-    pid = 1235
-    port = 5002
-
-    def start(self, model: ModelSpec, model_path: str, niceness: int = 0) -> None:
-        raise RuntimeError("GPU backend failed")
-
-
 def _patch_session_dependencies(
     monkeypatch,
     candidates: list[ModelSpec],
-    *,
-    fail_vllm: bool = False,
 ) -> None:
     import ageos.engine.session as session_module
 
@@ -165,6 +150,3 @@ def _patch_session_dependencies(
         ),
     )
     monkeypatch.setattr(session_module, "HfDownloader", FakeDownloader)
-    monkeypatch.setattr(session_module, "LlamaBackend", FakeLlamaBackend)
-    if fail_vllm:
-        monkeypatch.setattr(session_module, "VllmBackend", FailingVllmBackend)

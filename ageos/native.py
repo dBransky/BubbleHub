@@ -490,6 +490,21 @@ class NativeScheduler:
         finally:
             self.lib.ageos_scheduler_free_string(pointer)  # type: ignore[union-attr]
 
+    def inference_chat(self, request: dict[str, object]) -> dict[str, object]:
+        pointer = self.lib.ageos_inference_chat_json(json.dumps(request).encode("utf-8"))  # type: ignore[union-attr]
+        if not pointer:
+            raise LibAgeosError("native inference failed to build response")
+        try:
+            raw = ctypes.string_at(pointer).decode("utf-8")
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                raise LibAgeosError("native inference returned a non-object response")
+            if "error" in data:
+                raise LibAgeosError(str(data["error"]))
+            return data
+        finally:
+            self.lib.ageos_scheduler_free_string(pointer)  # type: ignore[union-attr]
+
     def run_sandbox(
         self,
         binary: str,
@@ -583,6 +598,8 @@ class NativeScheduler:
             self.lib.ageos_scheduler_snapshot_json.restype = ctypes.c_void_p
             self.lib.ageos_scheduler_free_string.argtypes = [ctypes.c_void_p]
             self.lib.ageos_scheduler_free_string.restype = None
+            self.lib.ageos_inference_chat_json.argtypes = [ctypes.c_char_p]
+            self.lib.ageos_inference_chat_json.restype = ctypes.c_void_p
             self.lib.ageos_sandbox_run.argtypes = [ctypes.POINTER(SandboxConfig)]
             self.lib.ageos_sandbox_run.restype = ctypes.c_int
         except AttributeError as exc:

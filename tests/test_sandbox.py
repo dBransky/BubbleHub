@@ -54,7 +54,9 @@ def test_native_sandbox_uses_agent_home_and_non_root_user(tmp_path: Path, monkey
                 'test "$HOME" = "$EXPECTED_HOME" && '
                 'test "$USER" = "agt-test-home" && '
                 'test "$AGEOS_WORKSPACE" = "$HOME/workspace" && '
+                'test "$PWD" = "$HOME/workspace" && '
                 'test "$(pwd)" = "$HOME/workspace" && '
+                'cd .. && test "$PWD" = "$HOME" && cd workspace && '
                 'test -w "$HOME" && '
                 'test -w "$TMPDIR" && '
                 'test -w "$HOME/workspace" && '
@@ -71,6 +73,43 @@ def test_native_sandbox_uses_agent_home_and_non_root_user(tmp_path: Path, monkey
     )
 
     assert result == 0
+
+
+@pytest.mark.skipif(platform.system() != "Linux", reason="sandbox is Linux-only")
+def test_native_sandbox_preserves_agent_home_between_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGEOS_AGENT_ID", "agt-persist-home")
+    scheduler = NativeScheduler()
+
+    first = scheduler.run_sandbox(
+        "/bin/sh",
+        ["/bin/sh", "-c", 'printf "first" > "$HOME/persist.txt"'],
+        resource_niceness=0,
+        memory_max=2 * 1024 * 1024 * 1024,
+        cpu_percent=0,
+        workdir=str(tmp_path),
+        root_dir=str(tmp_path),
+        isolate_network=False,
+    )
+    assert first == 0
+
+    second = scheduler.run_sandbox(
+        "/bin/sh",
+        [
+            "/bin/sh",
+            "-c",
+            'test "$(cat "$HOME/persist.txt")" = "first" && printf "+second" >> "$HOME/persist.txt"',
+        ],
+        resource_niceness=0,
+        memory_max=2 * 1024 * 1024 * 1024,
+        cpu_percent=0,
+        workdir=str(tmp_path),
+        root_dir=str(tmp_path),
+        isolate_network=False,
+    )
+
+    assert second == 0
+    persisted = tmp_path / ".ageos" / "agents" / "agt-persist-home" / "home" / "persist.txt"
+    assert persisted.read_text(encoding="utf-8") == "first+second"
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="sandbox is Linux-only")

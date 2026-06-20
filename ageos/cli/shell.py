@@ -22,6 +22,11 @@ def command(
         dir_okay=True,
         help="Writable directory exposed inside the sandbox. Defaults to an empty /workspace.",
     ),
+    force_new_sandbox: bool = typer.Option(
+        False,
+        "--force-new-sandbox",
+        help="Discard any persistent sandbox under --root-dir and start with a new agent home.",
+    ),
 ) -> None:
     """Open an interactive shell inside the AgeOS sandbox."""
 
@@ -38,6 +43,7 @@ def command(
         speciality=speciality,
         workdir=workdir,
         root_dir=root_dir,
+        force_new_sandbox=force_new_sandbox,
     )
 
 

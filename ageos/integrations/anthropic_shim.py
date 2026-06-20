@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import os
 from typing import Any
-
-import requests
 
 from ageos.engine.session import EngineSession
 
@@ -37,20 +34,6 @@ class _Messages:
             else:
                 text = str(content)
             converted.append({"role": str(message.get("role", "user")), "content": text})
-        api_base = os.environ.get("AGEOS_API_BASE_URL")
-        if api_base:
-            response = requests.post(
-                f"{api_base.rstrip('/')}/v1/chat/completions",
-                json={
-                    "model": self.specialty,
-                    "messages": converted,
-                    "ageos_specialty": self.specialty,
-                },
-                timeout=300,
-            )
-            response.raise_for_status()
-            answer = response.json()["choices"][0]["message"]["content"]
-            return AgeosAnthropicMessage(content=[{"type": "text", "text": answer}])
         with EngineSession(self.specialty, niceness=self.niceness) as session:
             answer = session.chat(converted)
         return AgeosAnthropicMessage(content=[{"type": "text", "text": answer}])
