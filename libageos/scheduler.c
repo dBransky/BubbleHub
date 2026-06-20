@@ -4,13 +4,16 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <sys/file.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -752,4 +755,666 @@ char *ageos_scheduler_snapshot_json(void) {
 
 void ageos_scheduler_free_string(char *value) {
     free(value);
+}
+
+typedef struct {
+    char specialty[AGEOS_FIELD_SMALL];
+    char model_name[AGEOS_FIELD_SMALL];
+    char backend[AGEOS_FIELD_SMALL];
+    char model_path[AGEOS_FIELD_LARGE];
+    char messages_json[8192];
+    double ram_gb;
+    double vram_gb;
+    int niceness;
+    int max_tokens;
+    int gpu_layers;
+} ageos_chat_request;
+
+static char *json_response_error(const char *message) {
+    char *buffer = malloc(AGEOS_JSON_CAPACITY);
+    if (buffer == NULL) {
+        return NULL;
+    }
+    ageos_json_builder builder = {
+        .data = buffer,
+        .len = 0,
+        .cap = AGEOS_JSON_CAPACITY,
+        .failed = 0,
+    };
+    json_append(&builder, "{\"error\":");
+    json_string(&builder, message == NULL ? "native inference failed" : message);
+    json_append(&builder, "}");
+    return builder.data;
+}
+
+static int json_get_string_field(const char *json, const char *field, char *buffer, size_t buffer_size) {
+    if (json == NULL || field == NULL || buffer == NULL || buffer_size == 0) {
+        return -1;
+    }
+    buffer[0] = '\0';
+    char pattern[128];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", field);
+    const char *cursor = strstr(json, pattern);
+    if (cursor == NULL) {
+        return -1;
+    }
+    cursor += strlen(pattern);
+    while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n' || *cursor == '\r') {
+        cursor++;
+    }
+    if (*cursor != ':') {
+        return -1;
+    }
+    cursor++;
+    while (*cursor == ' ' || *cursor == '\t' || *cursor == '\n' || *cursor == '\r') {
+        cursor++;
+    }
+    if (*cursor != '"') {
+        return -1;
+    }
+    cursor++;
+    size_t out = 0;
+    while (*cursor != '\0' && *cursor != '"') {
+        char ch = *cursor++;
+        if (ch == '\\') {
+            char escaped = *cursor++;
+            if (escaped == '\0') {
+                return -1;
+            }
+            switch (escaped) {
+                case 'n':
+                    ch = '\n';
+                    break;
+                case 'r':
+                    ch = '\r';
+                    break;
+                case 't':
+                    ch = '\t';
+                    break;
+                case '\\':
+                case '"':
+                case '/':
+                    ch = escaped;
+                    break;
+                default:
+                    ch = escaped;
+                    break;
+            }
+        }
+        if (out + 1 >= buffer_size) {
+            return -1;
+        }
+        buffer[out++] = ch;
+    }
+    if (*cursor != '"') {
+        return -1;
+    }
+    buffer[out] = '\0';
+    return 0;
+}
+
+static double json_get_double_field(const char *json, const char *field, double default_value) {
+    char pattern[128];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", field);
+    const char *cursor = strstr(json, pattern);
+    if (cursor == NULL) {
+        return default_value;
+    }
+    cursor += strlen(pattern);
+    while (*cursor != '\0' && *cursor != ':') {
+        cursor++;
+    }
+    if (*cursor != ':') {
+        return default_value;
+    }
+    cursor++;
+    char *end = NULL;
+    double value = strtod(cursor, &end);
+    return end == cursor ? default_value : value;
+}
+
+static int json_get_int_field(const char *json, const char *field, int default_value) {
+    double value = json_get_double_field(json, field, (double)default_value);
+    return (int)value;
+}
+
+static int parse_chat_request(const char *request_json, ageos_chat_request *request) {
+    if (request_json == NULL || request == NULL) {
+        return -1;
+    }
+    memset(request, 0, sizeof(*request));
+    request->max_tokens = 512;
+    request->gpu_layers = -999999;
+    if (
+        json_get_string_field(request_json, "specialty", request->specialty, sizeof(request->specialty)) != 0 ||
+        json_get_string_field(request_json, "model_name", request->model_name, sizeof(request->model_name)) != 0 ||
+        json_get_string_field(request_json, "backend", request->backend, sizeof(request->backend)) != 0 ||
+        json_get_string_field(request_json, "model_path", request->model_path, sizeof(request->model_path)) != 0 ||
+        json_get_string_field(request_json, "messages_json", request->messages_json, sizeof(request->messages_json)) != 0
+    ) {
+        return -1;
+    }
+    request->ram_gb = json_get_double_field(request_json, "ram_gb", 0.0);
+    request->vram_gb = json_get_double_field(request_json, "vram_gb", 0.0);
+    request->niceness = json_get_int_field(request_json, "niceness", 0);
+    request->max_tokens = json_get_int_field(request_json, "max_tokens", 512);
+    request->gpu_layers = json_get_int_field(request_json, "gpu_layers", -999999);
+    return 0;
+}
+
+static int model_process_record(const char *model_name, int64_t *pid, int *port) {
+    ageos_locked_state locked;
+    if (lock_state(&locked) != 0) {
+        return 0;
+    }
+    int index = find_model(&locked.state, model_name);
+    if (index < 0) {
+        unlock_state(&locked, 0);
+        return 0;
+    }
+    *pid = locked.state.models[index].pid;
+    *port = locked.state.models[index].port;
+    unlock_state(&locked, 0);
+    return 1;
+}
+
+static int pid_is_running(int64_t pid) {
+    if (pid <= 0) {
+        return 0;
+    }
+    if (kill((pid_t)pid, 0) == 0) {
+        return 1;
+    }
+    return errno == EPERM;
+}
+
+static int connect_localhost(int port) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return -1;
+    }
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons((uint16_t)port);
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        close(fd);
+        return -1;
+    }
+    return fd;
+}
+
+static int read_http_response(int fd, char *buffer, size_t buffer_size) {
+    size_t used = 0;
+    while (used + 1 < buffer_size) {
+        ssize_t count = read(fd, buffer + used, buffer_size - used - 1);
+        if (count < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        if (count == 0) {
+            break;
+        }
+        used += (size_t)count;
+    }
+    buffer[used] = '\0';
+    return 0;
+}
+
+static int http_get_health(int port) {
+    int fd = connect_localhost(port);
+    if (fd < 0) {
+        return 0;
+    }
+    const char *request = "GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+    ssize_t ignored = write(fd, request, strlen(request));
+    (void)ignored;
+    char response[4096];
+    int ok = read_http_response(fd, response, sizeof(response)) == 0 && strstr(response, "HTTP/1.1 5") == NULL && strstr(response, "HTTP/1.0 5") == NULL && strstr(response, "HTTP/") != NULL;
+    close(fd);
+    return ok;
+}
+
+static int allocate_local_port(void) {
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return 0;
+    }
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        close(fd);
+        return 0;
+    }
+    socklen_t len = sizeof(addr);
+    if (getsockname(fd, (struct sockaddr *)&addr, &len) != 0) {
+        close(fd);
+        return 0;
+    }
+    int port = ntohs(addr.sin_port);
+    close(fd);
+    return port;
+}
+
+static int wait_for_backend_health(pid_t pid, int port, int timeout_seconds) {
+    time_t deadline = time(NULL) + timeout_seconds;
+    while (time(NULL) < deadline) {
+        if (kill(pid, 0) != 0 && errno != EPERM) {
+            return 0;
+        }
+        if (http_get_health(port)) {
+            return 1;
+        }
+        usleep(250000);
+    }
+    return 0;
+}
+
+static int spawn_llama_backend(const ageos_chat_request *request, int *port_out, int64_t *pid_out) {
+    int port = allocate_local_port();
+    if (port <= 0) {
+        return -1;
+    }
+    char port_text[32];
+    snprintf(port_text, sizeof(port_text), "%d", port);
+    const char *ctx_size = getenv("AGEOS_LLAMA_CTX_SIZE");
+    if (ctx_size == NULL || ctx_size[0] == '\0') {
+        ctx_size = "32768";
+    }
+    const char *parallel = getenv("AGEOS_LLAMA_PARALLEL");
+    if (parallel == NULL || parallel[0] == '\0') {
+        parallel = "1";
+    }
+    char gpu_layers[32];
+    int use_gpu_layers = request->gpu_layers != -999999;
+    if (use_gpu_layers) {
+        snprintf(gpu_layers, sizeof(gpu_layers), "%d", request->gpu_layers);
+    }
+
+    char log_template[] = "/tmp/ageos-llama-native-XXXXXX.log";
+    int log_fd = mkstemps(log_template, 4);
+    if (log_fd < 0) {
+        log_fd = open("/dev/null", O_WRONLY);
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        if (log_fd >= 0) {
+            close(log_fd);
+        }
+        return -1;
+    }
+    if (pid == 0) {
+        if (log_fd >= 0) {
+            dup2(log_fd, STDOUT_FILENO);
+            dup2(log_fd, STDERR_FILENO);
+        }
+        if (use_gpu_layers) {
+            execlp(
+                "llama-server",
+                "llama-server",
+                "--model",
+                request->model_path,
+                "--host",
+                "127.0.0.1",
+                "--port",
+                port_text,
+                "--ctx-size",
+                ctx_size,
+                "--parallel",
+                parallel,
+                "--n-gpu-layers",
+                gpu_layers,
+                (char *)NULL
+            );
+        } else {
+            execlp(
+                "llama-server",
+                "llama-server",
+                "--model",
+                request->model_path,
+                "--host",
+                "127.0.0.1",
+                "--port",
+                port_text,
+                "--ctx-size",
+                ctx_size,
+                "--parallel",
+                parallel,
+                (char *)NULL
+            );
+        }
+        _exit(127);
+    }
+    if (log_fd >= 0) {
+        close(log_fd);
+    }
+    if (!wait_for_backend_health(pid, port, 120)) {
+        kill(pid, SIGTERM);
+        return -1;
+    }
+    *port_out = port;
+    *pid_out = (int64_t)pid;
+    return 0;
+}
+
+static int spawn_vllm_backend(const ageos_chat_request *request, int *port_out, int64_t *pid_out) {
+    int port = allocate_local_port();
+    if (port <= 0) {
+        return -1;
+    }
+    char port_text[32];
+    snprintf(port_text, sizeof(port_text), "%d", port);
+    char log_template[] = "/tmp/ageos-vllm-native-XXXXXX.log";
+    int log_fd = mkstemps(log_template, 4);
+    if (log_fd < 0) {
+        log_fd = open("/dev/null", O_WRONLY);
+    }
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        if (log_fd >= 0) {
+            close(log_fd);
+        }
+        return -1;
+    }
+    if (pid == 0) {
+        if (log_fd >= 0) {
+            dup2(log_fd, STDOUT_FILENO);
+            dup2(log_fd, STDERR_FILENO);
+        }
+        const char *cuda_devices = getenv("AGEOS_CUDA_VISIBLE_DEVICES");
+        if (cuda_devices != NULL && cuda_devices[0] != '\0') {
+            setenv("CUDA_VISIBLE_DEVICES", cuda_devices, 1);
+        }
+        const char *python = getenv("AGEOS_PYTHON");
+        if (python == NULL || python[0] == '\0') {
+            python = "python3";
+        }
+        execlp(
+            python,
+            python,
+            "-m",
+            "vllm.entrypoints.openai.api_server",
+            "--model",
+            request->model_path,
+            "--served-model-name",
+            request->model_name,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            port_text,
+            (char *)NULL
+        );
+        _exit(127);
+    }
+    if (log_fd >= 0) {
+        close(log_fd);
+    }
+    if (!wait_for_backend_health(pid, port, 180)) {
+        kill(pid, SIGTERM);
+        return -1;
+    }
+    *port_out = port;
+    *pid_out = (int64_t)pid;
+    return 0;
+}
+
+static int ensure_native_model_loaded(const ageos_chat_request *request, int *port_out, int64_t *pid_out) {
+    int allowed = 0;
+    char state[AGEOS_FIELD_SMALL];
+    char reason[AGEOS_FIELD_MEDIUM];
+    if (
+        ageos_scheduler_admit_model_job(
+            request->specialty,
+            request->model_name,
+            request->niceness,
+            request->ram_gb,
+            request->vram_gb,
+            &allowed,
+            state,
+            sizeof(state),
+            reason,
+            sizeof(reason)
+        ) != 0 ||
+        !allowed
+    ) {
+        return -1;
+    }
+
+    int port = 0;
+    int64_t pid = 0;
+    if (model_process_record(request->model_name, &pid, &port)) {
+        if (port > 0 && pid_is_running(pid) && http_get_health(port)) {
+            ageos_scheduler_mark_model_loaded(
+                request->model_name,
+                request->specialty,
+                request->backend,
+                request->ram_gb,
+                request->vram_gb,
+                pid,
+                port
+            );
+            *port_out = port;
+            *pid_out = pid;
+            return 0;
+        }
+        ageos_scheduler_evict_model(request->model_name);
+    }
+
+    int started = -1;
+    if (strcmp(request->backend, "llama") == 0) {
+        started = spawn_llama_backend(request, &port, &pid);
+    } else if (strcmp(request->backend, "vllm") == 0) {
+        started = spawn_vllm_backend(request, &port, &pid);
+    }
+    if (started != 0) {
+        return -1;
+    }
+    ageos_scheduler_mark_model_loaded(
+        request->model_name,
+        request->specialty,
+        request->backend,
+        request->ram_gb,
+        request->vram_gb,
+        pid,
+        port
+    );
+    *port_out = port;
+    *pid_out = pid;
+    return 0;
+}
+
+static int http_post_chat(int port, const ageos_chat_request *request, char *response, size_t response_size) {
+    int fd = connect_localhost(port);
+    if (fd < 0) {
+        return -1;
+    }
+    char payload[12288];
+    int written = snprintf(
+        payload,
+        sizeof(payload),
+        "{\"model\":\"%s\",\"messages\":%s,\"stream\":false,\"max_tokens\":%d}",
+        request->model_name,
+        request->messages_json,
+        request->max_tokens
+    );
+    if (written < 0 || (size_t)written >= sizeof(payload)) {
+        close(fd);
+        return -1;
+    }
+    char header[512];
+    written = snprintf(
+        header,
+        sizeof(header),
+        "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n",
+        strlen(payload)
+    );
+    if (written < 0 || (size_t)written >= sizeof(header)) {
+        close(fd);
+        return -1;
+    }
+    ssize_t ignored = write(fd, header, strlen(header));
+    ignored = write(fd, payload, strlen(payload));
+    (void)ignored;
+    int rc = read_http_response(fd, response, response_size);
+    close(fd);
+    return rc;
+}
+
+static int extract_chat_content(const char *http_response, char *content, size_t content_size) {
+    const char *body = strstr(http_response, "\r\n\r\n");
+    if (body == NULL) {
+        return -1;
+    }
+    body += 4;
+    return json_get_string_field(body, "content", content, content_size);
+}
+
+static int parse_local_http_base(const char *base_url, int *port_out) {
+    if (base_url == NULL || port_out == NULL) {
+        return -1;
+    }
+    const char *cursor = base_url;
+    const char *prefix = "http://";
+    if (strncmp(cursor, prefix, strlen(prefix)) == 0) {
+        cursor += strlen(prefix);
+    }
+    if (strncmp(cursor, "127.0.0.1", 9) != 0 && strncmp(cursor, "localhost", 9) != 0) {
+        return -1;
+    }
+    const char *colon = strchr(cursor, ':');
+    if (colon == NULL) {
+        *port_out = 80;
+        return 0;
+    }
+    *port_out = atoi(colon + 1);
+    return *port_out > 0 ? 0 : -1;
+}
+
+static int native_should_forward_to_sandbox_endpoint(void) {
+    const char *network = getenv("AGEOS_NETWORK");
+    const char *api_base = getenv("AGEOS_API_BASE_URL");
+    return network != NULL && strcmp(network, "inference-only") == 0 && api_base != NULL && api_base[0] != '\0';
+}
+
+static int http_post_sandbox_inference(const ageos_chat_request *request, char *response, size_t response_size) {
+    int port = 0;
+    if (parse_local_http_base(getenv("AGEOS_API_BASE_URL"), &port) != 0) {
+        return -1;
+    }
+    int fd = connect_localhost(port);
+    if (fd < 0) {
+        return -1;
+    }
+
+    char *buffer = malloc(AGEOS_JSON_CAPACITY);
+    if (buffer == NULL) {
+        close(fd);
+        return -1;
+    }
+    ageos_json_builder payload_builder = {
+        .data = buffer,
+        .len = 0,
+        .cap = AGEOS_JSON_CAPACITY,
+        .failed = 0,
+    };
+    json_append(&payload_builder, "{\"model\":");
+    json_string(&payload_builder, request->specialty);
+    json_append(&payload_builder, ",\"ageos_specialty\":");
+    json_string(&payload_builder, request->specialty);
+    json_append(&payload_builder, ",\"messages\":%s,\"max_tokens\":%d}", request->messages_json, request->max_tokens);
+    if (payload_builder.failed) {
+        free(buffer);
+        close(fd);
+        return -1;
+    }
+
+    char header[512];
+    int written = snprintf(
+        header,
+        sizeof(header),
+        "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n",
+        strlen(payload_builder.data)
+    );
+    if (written < 0 || (size_t)written >= sizeof(header)) {
+        free(buffer);
+        close(fd);
+        return -1;
+    }
+    ssize_t ignored = write(fd, header, strlen(header));
+    ignored = write(fd, payload_builder.data, strlen(payload_builder.data));
+    (void)ignored;
+    free(buffer);
+    int rc = read_http_response(fd, response, response_size);
+    close(fd);
+    return rc;
+}
+
+char *ageos_inference_chat_json(const char *request_json) {
+    ageos_chat_request request;
+    if (parse_chat_request(request_json, &request) != 0) {
+        return json_response_error("invalid native inference request");
+    }
+
+    if (native_should_forward_to_sandbox_endpoint()) {
+        char http_response[65536];
+        char content[32768];
+        if (http_post_sandbox_inference(&request, http_response, sizeof(http_response)) != 0 || extract_chat_content(http_response, content, sizeof(content)) != 0) {
+            return json_response_error("native sandbox inference forward failed");
+        }
+        char *buffer = malloc(AGEOS_JSON_CAPACITY);
+        if (buffer == NULL) {
+            return NULL;
+        }
+        ageos_json_builder builder = {
+            .data = buffer,
+            .len = 0,
+            .cap = AGEOS_JSON_CAPACITY,
+            .failed = 0,
+        };
+        json_append(&builder, "{\"content\":");
+        json_string(&builder, content);
+        json_append(&builder, ",\"model\":");
+        json_string(&builder, request.model_name);
+        json_append(&builder, ",\"pid\":0,\"port\":0}");
+        return builder.data;
+    }
+
+    int port = 0;
+    int64_t pid = 0;
+    if (ensure_native_model_loaded(&request, &port, &pid) != 0) {
+        return json_response_error("failed to load or attach model in libageos");
+    }
+
+    char http_response[65536];
+    char content[32768];
+    int rc = http_post_chat(port, &request, http_response, sizeof(http_response));
+    ageos_scheduler_mark_model_unloaded(request.model_name);
+    if (rc != 0 || extract_chat_content(http_response, content, sizeof(content)) != 0) {
+        return json_response_error("native model chat request failed");
+    }
+
+    char *buffer = malloc(AGEOS_JSON_CAPACITY);
+    if (buffer == NULL) {
+        return NULL;
+    }
+    ageos_json_builder builder = {
+        .data = buffer,
+        .len = 0,
+        .cap = AGEOS_JSON_CAPACITY,
+        .failed = 0,
+    };
+    json_append(&builder, "{\"content\":");
+    json_string(&builder, content);
+    json_append(&builder, ",\"model\":");
+    json_string(&builder, request.model_name);
+    json_append(&builder, ",\"pid\":%lld,\"port\":%d}", (long long)pid, port);
+    return builder.data;
 }

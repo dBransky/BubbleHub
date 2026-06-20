@@ -45,3 +45,4 @@ int ageos_scheduler_add_queue_item(
 );
 char *ageos_scheduler_snapshot_json(void);
 void ageos_scheduler_free_string(char *value);
+char *ageos_inference_chat_json(const char *request_json);

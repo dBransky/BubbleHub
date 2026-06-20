@@ -111,9 +111,12 @@ specialties:
     flavor: nemotron
     capability: instruct
 
-scheduler:
-  ram_limit_gb: 16
-  vram_limit_gb: 24
+# To limit resource usage, define scheduler limits in ~/.config/ageos/models.yaml
+# or an AGEOS_MODELS_CONFIG file:
+#
+# scheduler:
+#   ram_limit_gb: 16
+#   vram_limit_gb: 24
 
 inference:
   host: 127.0.0.1

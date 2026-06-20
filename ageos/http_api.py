@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import hashlib
-import math
 import os
 import time
 import uuid
@@ -10,10 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from threading import Lock
 from typing import Any
-
-import requests
 
 from ageos.engine.registry import ModelRegistry
 from ageos.engine.session import EngineSession
@@ -55,70 +50,34 @@ class AgeosHttpServer(ThreadingHTTPServer):
         config: ApiConfig,
     ) -> None:
         self.config = config
-        self._session_lock = Lock()
-        self._sessions: dict[str, tuple[EngineSession, EngineSession]] = {}
         super().__init__(server_address, handler_class)
 
     def preload(self, specialty: str | None = None) -> None:
-        with self._session_lock:
-            self._session_for(specialty or self.config.default_specialty)
+        with EngineSession(
+            specialty or self.config.default_specialty,
+            niceness=self.config.niceness,
+            status_callback=self.config.status_callback,
+        ):
+            return
 
     def chat(self, specialty: str, messages: list[dict[str, str]], max_tokens: int | None = None) -> str:
-        with self._session_lock:
-            try:
-                return self._session_for(specialty).chat(messages, max_tokens=max_tokens)
-            except Exception:
-                self._drop_session(specialty, evict_model=True)
-                return self._session_for(specialty).chat(messages, max_tokens=max_tokens)
+        with EngineSession(
+            specialty,
+            niceness=self.config.niceness,
+            status_callback=self.config.status_callback,
+        ) as session:
+            return session.chat(messages, max_tokens=max_tokens)
 
     def embeddings(self, specialty: str, inputs: list[str]) -> list[list[float]]:
-        with self._session_lock:
-            try:
-                return self._session_for(specialty).embeddings(inputs)
-            except Exception:
-                self._drop_session(specialty, evict_model=True)
-                return self._session_for(specialty).embeddings(inputs)
+        with EngineSession(
+            specialty,
+            niceness=self.config.niceness,
+            status_callback=self.config.status_callback,
+        ) as session:
+            return session.embeddings(inputs)
 
     def server_close(self) -> None:
-        with self._session_lock:
-            sessions = list(self._sessions.values())
-            self._sessions.clear()
-        for manager, _session in sessions:
-            manager.__exit__(None, None, None)
         super().server_close()
-
-    def _session_for(self, specialty: str) -> EngineSession:
-        cached = self._sessions.get(specialty)
-        if cached is None:
-            manager = EngineSession(
-                specialty,
-                niceness=self.config.niceness,
-                status_callback=self.config.status_callback,
-            )
-            session = manager.__enter__()
-            self._sessions[specialty] = (manager, session)
-            return session
-        _manager, session = cached
-        return session
-
-    def _drop_session(self, specialty: str, *, evict_model: bool = False) -> None:
-        cached = self._sessions.pop(specialty, None)
-        if cached is None:
-            return
-        manager, _session = cached
-        model_name = None
-        resolved = getattr(manager, "resolved", None)
-        model = getattr(resolved, "model", None)
-        if model is not None:
-            model_name = getattr(model, "name", None)
-        try:
-            manager.__exit__(None, None, None)
-        finally:
-            if evict_model and model_name:
-                try:
-                    manager.scheduler.evict_model(str(model_name))
-                except Exception:
-                    pass
 
 
 def chat_completion_payload(
@@ -325,14 +284,7 @@ def _handler_for(config: ApiConfig) -> type[BaseHTTPRequestHandler]:
         def _handle_embeddings(self, body: dict[str, Any]) -> None:
             inputs = normalize_embeddings_input(body.get("input"))
             specialty = _specialty_from_body(body, config.default_specialty)
-            dimensions = _embedding_dimensions(body)
-            try:
-                vectors = _ageos_server(self.server).embeddings(specialty, inputs)
-            except requests.HTTPError as exc:
-                status_code = exc.response.status_code if exc.response is not None else None
-                if status_code not in {HTTPStatus.NOT_FOUND, HTTPStatus.NOT_IMPLEMENTED}:
-                    raise
-                vectors = fallback_embeddings(inputs, dimensions)
+            vectors = _ageos_server(self.server).embeddings(specialty, inputs)
             self._send_json(embeddings_payload(_model_name(body, specialty), vectors, inputs))
 
         def _read_json(self) -> dict[str, Any]:
@@ -528,31 +480,3 @@ def _resolve_specialty_alias(value: str, default: str) -> str:
         if unprefixed in registry.specialties:
             return unprefixed
     return default
-
-
-def _embedding_dimensions(body: dict[str, Any]) -> int:
-    value = body.get("dimensions", 384)
-    try:
-        dimensions = int(value)
-    except (TypeError, ValueError):
-        raise ValueError("dimensions must be an integer") from None
-    if dimensions <= 0 or dimensions > 4096:
-        raise ValueError("dimensions must be between 1 and 4096")
-    return dimensions
-
-
-def fallback_embeddings(inputs: list[str], dimensions: int = 384) -> list[list[float]]:
-    """Return stable feature-hash embeddings when a backend has no embedding endpoint."""
-
-    vectors: list[list[float]] = []
-    for text in inputs:
-        vector = [0.0] * dimensions
-        tokens = text.lower().split() or [text.lower()]
-        for token in tokens:
-            digest = hashlib.sha256(token.encode("utf-8")).digest()
-            index = int.from_bytes(digest[:4], "big") % dimensions
-            sign = 1.0 if digest[4] % 2 == 0 else -1.0
-            vector[index] += sign
-        norm = math.sqrt(sum(value * value for value in vector)) or 1.0
-        vectors.append([value / norm for value in vector])
-    return vectors
