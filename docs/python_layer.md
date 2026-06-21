@@ -6,11 +6,12 @@ Python does not own sandbox hardening or LLM hosting. It must not start model ba
 
 ## Architecture
 
-Python entrypoints all converge on the native library:
+Python entrypoints converge on the native library on the host, while sandboxed Python inference calls use the sandbox-forwarded HTTP endpoint:
 
 - CLI commands parse user options and call `SchedulerClient` or `EngineSession`.
 - HTTP and SDK-compatible shims normalize external payloads and call `EngineSession`.
 - `EngineSession` selects a configured model candidate and ensures files exist, then sends one JSON request through `SchedulerClient.inference_chat()`.
+- When `AGEOS_SANDBOX=1`, `EngineSession` must not initialize `SchedulerClient` or load `libageos`; it forwards chat requests to `AGEOS_SANDBOX_INFERENCE_HOST:AGEOS_SANDBOX_INFERENCE_PORT`.
 - `SchedulerClient` delegates to `ageos/native.py`.
 - `ageos/native.py` calls exported `libageos` functions with `ctypes`.
 
@@ -24,7 +25,7 @@ Python should express policy and validate user input before calling native code,
 - Persistent sandbox metadata may be selected in Python, but path safety must be conservative: no symlink agent homes, no path escapes, and no source-tree roots unless explicitly allowed.
 - Python must pass sandbox configuration to `ageos_sandbox_run()` instead of emulating isolation.
 - `--unsafe-no-sandbox` is only a development escape hatch and must not be used as a production hardening path.
-- Sandboxed inference environment variables are compatibility hints for agents; the native sandbox still controls network access.
+- Sandboxed inference environment variables are the only supported route for Python prompt/shim inference inside the sandbox; the native sandbox still controls network access.
 - Python code should never weaken native failures. If native sandbox or inference setup fails, surface the error.
 
 ## LLM Hosting Policy
@@ -32,7 +33,7 @@ Python should express policy and validate user input before calling native code,
 All model hosting is native-owned.
 
 - Python must not call `subprocess.Popen()` to start `llama-server`, vLLM, or any model-serving process.
-- Python must not call backend `/v1/chat/completions` endpoints directly for AgeOS inference.
+- Python must not call backend `/v1/chat/completions` endpoints directly for AgeOS inference. The exception is sandboxed `EngineSession`, which may call the sandbox-forwarded AgeOS compatibility endpoint because direct shared-library access would escape the sandbox boundary.
 - Python must not keep a process, port, pid, refcount, or model-session cache.
 - Python may select a model candidate from config and ensure model files are present.
 - Python may marshal messages, max token limits, niceness, model metadata, and model paths into the native JSON request.
@@ -82,12 +83,13 @@ Typer application root. Registers top-level commands and model/specialty subcomm
 
 ### `ageos/cli/run.py`
 
-Implements `ageos run`. It resolves binaries, maps host root/workdir into sandbox paths, handles persistent sandbox reuse metadata, registers/deregisters agents, prepares compatibility inference env vars, and calls native sandbox execution.
+Implements `ageos run`. It resolves binaries, maps host root/workdir into sandbox paths, stages non-system binaries into a temporary workspace when no `--root-dir` is provided, handles persistent sandbox reuse metadata, registers/deregisters agents, prepares compatibility inference env vars, and calls native sandbox execution.
 
 Hardening policy:
 
 - Keep protected-root validation conservative.
 - Keep `/workspace` as the sandbox-facing root.
+- Require `--binary` to be inside `--root-dir` when a root is provided.
 - Do not bypass native sandboxing except through explicit `--unsafe-no-sandbox`.
 
 ### `ageos/cli/shell.py`
@@ -158,13 +160,14 @@ Package marker for Python integration adapters.
 
 ### `ageos/engine/session.py`
 
-Thin native-backed model session facade. It loads model config, detects hardware, applies scheduler resource limits, selects the first valid model candidate, ensures model files exist, and marshals chat requests into `SchedulerClient.inference_chat()`.
+Thin model session facade. On the host, it loads model config, detects hardware, applies scheduler resource limits, selects the first valid model candidate, ensures model files exist, and marshals chat requests into `SchedulerClient.inference_chat()`. Inside the sandbox, it skips native scheduler setup and forwards chat requests to the sandbox inference endpoint.
 
 Policy:
 
 - No backend process objects.
 - No warm model cache.
 - No pid/port/refcount lifecycle ownership.
+- No native scheduler/shared-library initialization when `AGEOS_SANDBOX=1`.
 - No Python embeddings fallback.
 
 ### `ageos/engine/registry.py`

@@ -19,14 +19,14 @@ Call flow for model hosting:
 5. `libageos` sends the OpenAI-shaped chat request to the backend and returns JSON to the caller.
 6. The model refcount is released, but the model process stays warm until explicit eviction or scheduler pressure removes it.
 
-Sandboxed agents enter through the same native inference path. When the sandbox is marked inference-only, native inference forwards to the sandbox-visible local inference endpoint.
+Sandboxed agents receive an inference-only loopback path to the host AgeOS endpoint. Python code running inside the sandbox must use that forwarded endpoint instead of loading the native shared library directly.
 
 ## Hardening Policy
 
 Hardening is enforced by the native sandbox runtime.
 
 - Filesystem exposure must be explicit. A host `--root-dir` is mounted into the sandbox workspace view, not exposed as a host path in `$PWD`.
-- Sandbox `$PWD`, `$HOME`, `$TMPDIR`, `$AGEOS_WORKSPACE`, and agent identity must be set by the native sandbox setup.
+- Sandbox `$PWD`, `$HOME`, `$TMPDIR`, `$AGEOS_WORKSPACE`, agent identity, `PATH`, locale, terminal type, and shell prompt must be set by the native sandbox setup.
 - Persistent agent homes must live under controlled `.ageos/agents/agt-*` directories and must not follow symlinks.
 - Network isolation is default for agents. Sandboxed agents only receive the local inference endpoint when `isolate_network` is enabled.
 - Resource limits such as memory and CPU are applied by native sandbox setup.
@@ -70,7 +70,7 @@ Linux Landlock setup and filesystem access restriction helpers. This file is par
 
 ### `libageos/sandbox.c`
 
-Native sandbox runtime. It sets up the agent execution environment, persistent home/workspace mapping, user identity, environment variables, writable paths, network policy, resource limits, and the final exec.
+Native sandbox runtime. It sets up the agent execution environment, persistent home/workspace mapping, user identity, clean environment variables, writable paths, network policy, resource limits, and the final exec.
 
 Hardening policy for this file:
 

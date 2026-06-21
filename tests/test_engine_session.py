@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from ageos.engine.registry import ModelSpec
 from ageos.engine.session import EngineSession
 from ageos.native import HardwareInfo
@@ -84,6 +86,53 @@ def test_engine_session_does_not_mark_python_model_lifecycle(monkeypatch) -> Non
     assert scheduler.evicted == []
 
 
+def test_engine_session_forwards_chat_to_sandbox_endpoint(monkeypatch) -> None:
+    import ageos.engine.session as session_module
+
+    calls: list[dict[str, object]] = []
+
+    def post(url: str, *, json: dict[str, object], timeout: float) -> FakeResponse:
+        calls.append({"url": url, "json": json, "timeout": timeout})
+        return FakeResponse({"choices": [{"message": {"content": "sandbox"}}]})
+
+    monkeypatch.setenv("AGEOS_SANDBOX", "1")
+    monkeypatch.setenv("AGEOS_SANDBOX_INFERENCE_HOST", "127.0.0.1")
+    monkeypatch.setenv("AGEOS_SANDBOX_INFERENCE_PORT", "8123")
+    monkeypatch.setattr(session_module.requests, "post", post)
+    monkeypatch.setattr(
+        session_module,
+        "_local_scheduler_client",
+        lambda: pytest.fail("sandbox sessions must not initialize the native scheduler"),
+    )
+
+    with EngineSession("default-instruct") as session:
+        assert session.chat([{"role": "user", "content": "hi"}], max_tokens=8) == "sandbox"
+
+    assert calls == [
+        {
+            "url": "http://127.0.0.1:8123/v1/chat/completions",
+            "json": {
+                "model": "default-instruct",
+                "ageos_specialty": "default-instruct",
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 8,
+                "stream": False,
+            },
+            "timeout": session_module.SANDBOX_INFERENCE_TIMEOUT_SECONDS,
+        }
+    ]
+
+
+def test_engine_session_requires_sandbox_inference_endpoint(monkeypatch) -> None:
+    monkeypatch.setenv("AGEOS_SANDBOX", "1")
+    monkeypatch.delenv("AGEOS_SANDBOX_INFERENCE_HOST", raising=False)
+    monkeypatch.delenv("AGEOS_SANDBOX_INFERENCE_PORT", raising=False)
+
+    with pytest.raises(RuntimeError, match="AGEOS_SANDBOX_INFERENCE_HOST"):
+        with EngineSession("default-instruct"):
+            pass
+
+
 class FakeRegistry:
     def __init__(self, candidates: list[ModelSpec]) -> None:
         self.candidates = candidates
@@ -123,6 +172,17 @@ class FakeScheduler:
     def inference_chat(self, request: dict[str, object]) -> dict[str, object]:
         self.requests.append(request)
         return {"content": "native"}
+
+
+class FakeResponse:
+    def __init__(self, payload: dict[str, object]) -> None:
+        self.payload = payload
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, object]:
+        return self.payload
 
 
 class FakeDownloader:

@@ -47,6 +47,71 @@ def test_run_agent_uses_native_inference_only_network() -> None:
     assert captured_env["AGEOS_SANDBOX_INFERENCE_PORT"] == "8000"
 
 
+def test_run_agent_stages_relative_binary_without_root_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    binary = tmp_path / "basic_agent.py"
+    binary.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    client = Mock()
+    client.register_agent.return_value = "agt-test"
+    staged_roots: list[Path] = []
+
+    def run_sandbox(*_args: object, **kwargs: object) -> int:
+        staged_root = Path(str(kwargs["root_dir"]))
+        staged_roots.append(staged_root)
+        assert (staged_root / "basic_agent.py").is_file()
+        return 0
+
+    client.native.run_sandbox.side_effect = run_sandbox
+
+    with (
+        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
+        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+    ):
+        with pytest.raises(typer.Exit) as exc:
+            run_agent(
+                binary="./basic_agent.py",
+                extra_args=[],
+                niceness=0,
+                memory="2G",
+                cpu=0,
+                speciality="default-instruct",
+                workdir=None,
+            )
+
+    assert exc.value.exit_code == 0
+    _binary, argv = client.native.run_sandbox.call_args.args
+    assert argv[-1] == "/home/agt-test/workspace/basic_agent.py"
+    assert len(staged_roots) == 1
+    assert staged_roots[0].name.startswith("ageos-workspace-")
+
+
+def test_run_agent_rejects_binary_outside_root_dir(tmp_path: Path) -> None:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    binary = outside / "agent.py"
+    binary.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    root_dir = tmp_path / "workspace"
+    root_dir.mkdir()
+    client = Mock()
+    client.register_agent.return_value = "agt-test"
+
+    with (
+        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
+        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+    ):
+        with pytest.raises(typer.BadParameter, match="--binary must be inside --root-dir"):
+            run_agent(
+                binary=str(binary),
+                extra_args=[],
+                niceness=0,
+                memory="2G",
+                cpu=0,
+                speciality="default-instruct",
+                workdir=None,
+                root_dir=root_dir,
+            )
+
+
 def test_run_agent_resolves_explicit_relative_binary_from_host_cwd() -> None:
     client = Mock()
     client.register_agent.return_value = "agt-test"

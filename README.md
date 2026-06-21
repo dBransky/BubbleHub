@@ -54,7 +54,7 @@ ageos prompt --text "Say hello from AgeOS"
 Run an agent in the sandbox:
 
 ```bash
-ageos run --root-dir . --binary ./examples/basic_agent.py --memory 16G
+ageos run --root-dir ./examples/basic --binary ./examples/basic/basic_agent.py --memory 16G
 ```
 
 Start the OpenAI-compatible local endpoint (optional):
@@ -87,9 +87,13 @@ ageos models stop
 OPENAI_BASE_URL=http://127.0.0.1:8000/v1
 OPENAI_API_KEY=ageos-local
 AGEOS_API_BASE_URL=http://127.0.0.1:8000
+AGEOS_SANDBOX_INFERENCE_HOST=127.0.0.1
+AGEOS_SANDBOX_INFERENCE_PORT=8000
 ```
 
 Sandboxed agents only get access to the local inference endpoint. General outbound network access is blocked.
+
+When `--root-dir` is provided, the binary must live inside that root and AgeOS mounts the root as the sandbox workspace. When `--root-dir` is omitted, non-system binaries are copied into a temporary workspace before the sandbox starts. Inside the sandbox, AgeOS Python prompt/shim calls detect `AGEOS_SANDBOX=1` and use the forwarded inference endpoint instead of loading the native shared library.
 
 ## OpenClaw Example
 
