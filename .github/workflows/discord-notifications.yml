@@ -50,17 +50,16 @@ jobs:
             exit 0
           fi
 
-          if [[ "$route" == "feature" ]]; then
-            webhook="${DISCORD_WEBHOOK_FEATURE_REQUESTS:-}"
-            channel_label="Feature Requests"
-            emoji="💡"
-            color="5763719"
-          else
-            webhook="${DISCORD_WEBHOOK_BUGS:-}"
-            channel_label="Bugs"
-            emoji="🐛"
-            color="15548997"
-          fi
+          case "$route" in
+            feature)
+              webhook="${DISCORD_WEBHOOK_FEATURE_REQUESTS:-}"
+              channel_label="Feature Requests"
+              ;;
+            bug)
+              webhook="${DISCORD_WEBHOOK_BUGS:-}"
+              channel_label="Bugs"
+              ;;
+          esac
 
           if [[ -z "$webhook" ]]; then
             echo "Discord webhook secret is required for ${channel_label} notifications." >&2
@@ -69,11 +68,7 @@ jobs:
 
           if [[ "$ISSUE_ACTION" == "opened" ]]; then
             action_label="opened"
-            if [[ "$route" == "feature" ]]; then
-              color="5763719"
-            else
-              color="15548997"
-            fi
+            color="5763719"
           else
             action_label="closed"
             color="9807270"
@@ -81,11 +76,9 @@ jobs:
 
           body_preview="$(printf '%s' "${ISSUE_BODY:-}" | head -c 1000)"
           title_preview="$(printf '%s' "${ISSUE_TITLE:-}" | head -c 256)"
-          thread_name_preview="$(printf '%s' "${ISSUE_TITLE:-}" | head -c 100)"
           timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 
-          embed_json="$(jq -n \
-            --arg emoji "$emoji" \
+          jq -n \
             --arg title "$title_preview" \
             --arg url "$ISSUE_URL" \
             --arg action "$action_label" \
@@ -96,56 +89,42 @@ jobs:
             --arg timestamp "$timestamp" \
             --argjson color "$color" \
             '{
-              "title": ($emoji + " Issue #" + $number + " " + $action),
-              "url": $url,
-              "description": $title,
-              "color": $color,
-              "fields": [
+              "username": "AgeOS GitHub",
+              "avatar_url": "https://ageos-labs.com/logo.png",
+              "embeds": [
                 {
-                  "name": "Author",
-                  "value": $user,
-                  "inline": true
-                },
-                {
-                  "name": "Channel",
-                  "value": $channel,
-                  "inline": true
-                },
-                {
-                  "name": "Description",
-                  "value": (
-                    if ($body | length) > 0
-                    then $body
-                    else "No description provided."
-                    end
-                  )
+                  "title": ("Issue #" + $number + " " + $action),
+                  "url": $url,
+                  "description": $title,
+                  "color": $color,
+                  "fields": [
+                    {
+                      "name": "Author",
+                      "value": $user,
+                      "inline": true
+                    },
+                    {
+                      "name": "Channel",
+                      "value": $channel,
+                      "inline": true
+                    },
+                    {
+                      "name": "Description",
+                      "value": (
+                        if ($body | length) > 0
+                        then $body
+                        else "No description provided."
+                        end
+                      )
+                    }
+                  ],
+                  "footer": {
+                    "text": "AgeOS • GitHub Issues"
+                  },
+                  "timestamp": $timestamp
                 }
-              ],
-              "footer": {
-                "text": "AgeOS • GitHub Issues"
-              },
-              "timestamp": $timestamp
-            }')"
-
-          if [[ "$route" == "feature" ]]; then
-            jq -n \
-              --arg thread_name "$thread_name_preview" \
-              --argjson embed "$embed_json" \
-              '{
-                "username": "AgeOS GitHub",
-                "avatar_url": "https://ageos-labs.com/logo.png",
-                "thread_name": $thread_name,
-                "embeds": [$embed]
-              }' > payload.json
-          else
-            jq -n \
-              --argjson embed "$embed_json" \
-              '{
-                "username": "AgeOS GitHub",
-                "avatar_url": "https://ageos-labs.com/logo.png",
-                "embeds": [$embed]
-              }' > payload.json
-          fi
+              ]
+            }' > payload.json
 
           response="$(curl -sS -w "\n%{http_code}" \
             -H "Content-Type: application/json" \
