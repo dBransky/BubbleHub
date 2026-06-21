@@ -1,0 +1,247 @@
+name: discord-notifications
+
+on:
+  issues:
+    types: [opened, closed]
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  issues: read
+  pull-requests: read
+
+jobs:
+  notify-issue:
+    if: github.event_name == 'issues' && github.event.issue.pull_request == null
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Send issue update to Discord
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISCORD_WEBHOOK_FEATURE_REQUESTS: ${{ secrets.DISCORD_WEBHOOK_FEATURE_REQUESTS }}
+          DISCORD_WEBHOOK_BUGS: ${{ secrets.DISCORD_WEBHOOK_BUGS }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_ACTION: ${{ github.event.action }}
+        run: |
+          set -euo pipefail
+
+          issue_json="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}")"
+          issue_type="$(echo "$issue_json" | jq -r '.type.name // ""' | tr '[:upper:]' '[:lower:]')"
+          labels="$(echo "$issue_json" | jq -r '[.labels[].name | ascii_downcase] | join(" ")')"
+          ISSUE_TITLE="$(echo "$issue_json" | jq -r '.title')"
+          ISSUE_URL="$(echo "$issue_json" | jq -r '.html_url')"
+          ISSUE_USER="$(echo "$issue_json" | jq -r '.user.login')"
+          ISSUE_BODY="$(echo "$issue_json" | jq -r '.body // ""')"
+
+          route=""
+          if [[ "$issue_type" == *feature* ]]; then
+            route="feature"
+          elif [[ "$issue_type" == *bug* ]]; then
+            route="bug"
+          elif [[ "$labels" == *feature* ]]; then
+            route="feature"
+          elif [[ "$labels" == *bug* ]]; then
+            route="bug"
+          fi
+
+          if [[ -z "$route" ]]; then
+            echo "Issue #${ISSUE_NUMBER} has no feature or bug type; skipping Discord notification."
+            exit 0
+          fi
+
+          if [[ "$route" == "feature" ]]; then
+            webhook="${DISCORD_WEBHOOK_FEATURE_REQUESTS:-}"
+            channel_label="Feature Requests"
+            emoji="💡"
+            color="5763719"
+          else
+            webhook="${DISCORD_WEBHOOK_BUGS:-}"
+            channel_label="Bugs"
+            emoji="🐛"
+            color="15548997"
+          fi
+
+          if [[ -z "$webhook" ]]; then
+            echo "Discord webhook secret is required for ${channel_label} notifications." >&2
+            exit 1
+          fi
+
+          if [[ "$ISSUE_ACTION" == "opened" ]]; then
+            action_label="opened"
+            if [[ "$route" == "feature" ]]; then
+              color="5763719"
+            else
+              color="15548997"
+            fi
+          else
+            action_label="closed"
+            color="9807270"
+          fi
+
+          body_preview="$(printf '%s' "${ISSUE_BODY:-}" | head -c 1000)"
+          title_preview="$(printf '%s' "${ISSUE_TITLE:-}" | head -c 256)"
+          thread_name_preview="$(printf '%s' "${ISSUE_TITLE:-}" | head -c 100)"
+          timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          embed_json="$(jq -n \
+            --arg emoji "$emoji" \
+            --arg title "$title_preview" \
+            --arg url "$ISSUE_URL" \
+            --arg action "$action_label" \
+            --arg channel "$channel_label" \
+            --arg user "$ISSUE_USER" \
+            --arg number "$ISSUE_NUMBER" \
+            --arg body "$body_preview" \
+            --arg timestamp "$timestamp" \
+            --argjson color "$color" \
+            '{
+              "title": ($emoji + " Issue #" + $number + " " + $action),
+              "url": $url,
+              "description": $title,
+              "color": $color,
+              "fields": [
+                {
+                  "name": "Author",
+                  "value": $user,
+                  "inline": true
+                },
+                {
+                  "name": "Channel",
+                  "value": $channel,
+                  "inline": true
+                },
+                {
+                  "name": "Description",
+                  "value": (
+                    if ($body | length) > 0
+                    then $body
+                    else "No description provided."
+                    end
+                  )
+                }
+              ],
+              "footer": {
+                "text": "AgeOS • GitHub Issues"
+              },
+              "timestamp": $timestamp
+            }')"
+
+          if [[ "$route" == "feature" ]]; then
+            jq -n \
+              --arg thread_name "$thread_name_preview" \
+              --argjson embed "$embed_json" \
+              '{
+                "username": "AgeOS GitHub",
+                "avatar_url": "https://ageos-labs.com/logo.png",
+                "thread_name": $thread_name,
+                "embeds": [$embed]
+              }' > payload.json
+          else
+            jq -n \
+              --argjson embed "$embed_json" \
+              '{
+                "username": "AgeOS GitHub",
+                "avatar_url": "https://ageos-labs.com/logo.png",
+                "embeds": [$embed]
+              }' > payload.json
+          fi
+
+          response="$(curl -sS -w "\n%{http_code}" \
+            -H "Content-Type: application/json" \
+            -d @payload.json \
+            "$webhook")"
+          http_code="${response##*$'\n'}"
+          response_body="${response%$'\n'*}"
+
+          if [[ "$http_code" != "204" && "$http_code" != "200" ]]; then
+            echo "Discord returned HTTP ${http_code} for ${channel_label}." >&2
+            echo "${response_body}" >&2
+            exit 1
+          fi
+
+  notify-merge:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged == true
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Announce merge to Discord
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISCORD_WEBHOOK_ANNOUNCEMENTS: ${{ secrets.DISCORD_WEBHOOK_ANNOUNCEMENTS }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          pr_json="$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}")"
+          PR_TITLE="$(echo "$pr_json" | jq -r '.title')"
+          PR_URL="$(echo "$pr_json" | jq -r '.html_url')"
+          PR_USER="$(echo "$pr_json" | jq -r '.user.login')"
+          PR_BODY="$(echo "$pr_json" | jq -r '.body // ""')"
+
+          webhook="${DISCORD_WEBHOOK_ANNOUNCEMENTS:-}"
+          if [[ -z "$webhook" ]]; then
+            echo "DISCORD_WEBHOOK_ANNOUNCEMENTS secret is required for merge announcements." >&2
+            exit 1
+          fi
+
+          body_preview="$(printf '%s' "${PR_BODY:-}" | head -c 1000)"
+          title_preview="$(printf '%s' "${PR_TITLE:-}" | head -c 256)"
+          timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+          jq -n \
+            --arg title "$title_preview" \
+            --arg url "$PR_URL" \
+            --arg user "$PR_USER" \
+            --arg number "$PR_NUMBER" \
+            --arg body "$body_preview" \
+            --arg timestamp "$timestamp" \
+            '{
+              "username": "AgeOS GitHub",
+              "avatar_url": "https://ageos-labs.com/logo.png",
+              "embeds": [
+                {
+                  "title": ("✅ Merged to main: PR #" + $number),
+                  "url": $url,
+                  "description": $title,
+                  "color": 5763719,
+                  "fields": [
+                    {
+                      "name": "Author",
+                      "value": $user,
+                      "inline": true
+                    },
+                    {
+                      "name": "Pull Request",
+                      "value": ("[#" + $number + "](" + $url + ")"),
+                      "inline": true
+                    },
+                    {
+                      "name": "Description",
+                      "value": (
+                        if ($body | length) > 0
+                        then $body
+                        else "No PR description provided."
+                        end
+                      )
+                    }
+                  ],
+                  "footer": {
+                    "text": "AgeOS • Merged to main"
+                  },
+                  "timestamp": $timestamp
+                }
+              ]
+            }' > payload.json
+
+          response="$(curl -sS -w "\n%{http_code}" \
+            -H "Content-Type: application/json" \
+            -d @payload.json \
+            "$webhook")"
+          http_code="${response##*$'\n'}"
+          response_body="${response%$'\n'*}"
+
+          if [[ "$http_code" != "204" && "$http_code" != "200" ]]; then
+            echo "Discord returned HTTP ${http_code} for merge announcements." >&2
+            echo "${response_body}" >&2
+            exit 1
+          fi
