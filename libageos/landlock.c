@@ -94,6 +94,16 @@ static int add_path_rule(int ruleset_fd, const char *path, uint64_t rights) {
     return rc == 0 ? 0 : -err;
 }
 
+static int add_path_rules(int ruleset_fd, const char *const *paths, size_t count, uint64_t rights) {
+    for (size_t i = 0; i < count; i++) {
+        int rc = add_path_rule(ruleset_fd, paths[i], rights);
+        if (rc != 0) {
+            return rc;
+        }
+    }
+    return 0;
+}
+
 static int add_home_child_rule(int ruleset_fd, const char *child, uint64_t rights) {
     const char *home = getenv("HOME");
     if (home == NULL || home[0] == '\0') {
@@ -194,7 +204,7 @@ static int validate_writable_dir(const char *writable_dir) {
     return 0;
 }
 
-int ageos_landlock_apply_filesystem(const char *writable_dir) {
+int ageos_landlock_apply_filesystem(const char *writable_dir, int allow_dns) {
     int validate_rc = validate_writable_dir(writable_dir);
     if (validate_rc != 0) {
         return validate_rc;
@@ -212,7 +222,7 @@ int ageos_landlock_apply_filesystem(const char *writable_dir) {
     }
     int rc = 0;
 
-    const char *readonly_paths[] = {
+    static const char *const readonly_paths[] = {
         "/usr",
         "/bin",
         "/sbin",
@@ -221,8 +231,24 @@ int ageos_landlock_apply_filesystem(const char *writable_dir) {
         "/etc/ssl",
         "/opt/ageos",
     };
-    for (size_t i = 0; i < sizeof(readonly_paths) / sizeof(readonly_paths[0]); i++) {
-        rc = add_path_rule(ruleset_fd, readonly_paths[i], read_rights());
+    static const char *const dns_readonly_paths[] = {
+        "/etc/resolv.conf",
+        "/etc/nsswitch.conf",
+        "/etc/hosts",
+    };
+
+    rc = add_path_rules(ruleset_fd, readonly_paths, sizeof(readonly_paths) / sizeof(readonly_paths[0]), read_rights());
+    if (rc != 0) {
+        close(ruleset_fd);
+        return rc;
+    }
+    if (allow_dns) {
+        rc = add_path_rules(
+            ruleset_fd,
+            dns_readonly_paths,
+            sizeof(dns_readonly_paths) / sizeof(dns_readonly_paths[0]),
+            readonly_file_rights()
+        );
         if (rc != 0) {
             close(ruleset_fd);
             return rc;

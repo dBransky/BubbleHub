@@ -28,6 +28,7 @@ def command(
         "--force-new-sandbox",
         help="Discard any persistent sandbox under --root-dir and start with a new agent home.",
     ),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Allow network access for the agent. This is useful for setting up the agent inside the sandbox environment."),
 ) -> None:
     """Open an interactive shell inside the AgeOS sandbox."""
 
@@ -46,6 +47,7 @@ def command(
         workdir=workdir,
         root_dir=root_dir,
         force_new_sandbox=force_new_sandbox,
+        allow_network=allow_network,
     )
 
 

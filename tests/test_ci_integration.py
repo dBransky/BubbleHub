@@ -131,6 +131,21 @@ def _run_basic_agent(
     return _run(command, env=env, timeout=240)
 
 
+def _openclaw_setup_command(openclaw_root: Path) -> list[str]:
+    return [
+        "ageos",
+        "run",
+        "--memory",
+        "4G",
+        "--allow-network",
+        "--root-dir",
+        str(openclaw_root),
+        "--binary",
+        "openclaw",
+        "setup",
+    ]
+
+
 def _openclaw_onboard_command(openclaw_root: Path) -> list[str]:
     return [
         "ageos",
@@ -207,6 +222,29 @@ def test_basic_agent_force_new_sandbox_starts_with_fresh_home(
     assert "existing_home_data=<missing>" in second.stdout
     assert not (root_dir / ".ageos" / "agents" / first_agent_id).exists()
     assert (root_dir / ".ageos" / "agents" / second_agent_id / "home" / "test.txt").exists()
+
+
+def test_openclaw_setup_runs_with_network_allowed_sandbox(
+    integration_env: dict[str, str], openclaw_sandbox_state: tuple[Path, str]
+) -> None:
+    openclaw_root, agent_id = openclaw_sandbox_state
+    openclaw_binary = openclaw_root / "node_modules" / ".bin" / "openclaw"
+    if not openclaw_binary.exists():
+        pytest.skip("OpenClaw example dependencies are not installed")
+    if shutil.which("node", path=integration_env.get("PATH")) is None:
+        pytest.skip("node is not installed")
+
+    state_root = openclaw_root / ".ageos"
+    config_path = state_root / "agents" / agent_id / "home" / ".openclaw" / "openclaw.json"
+
+    result = _run(
+        _openclaw_setup_command(openclaw_root),
+        env=integration_env,
+        timeout=240,
+    )
+
+    assert "Setup complete" in result.stdout or config_path.exists()
+    assert config_path.exists(), f"OpenClaw config was not created under {config_path.parent}"
 
 
 def test_openclaw_onboard_configures_local_inference(

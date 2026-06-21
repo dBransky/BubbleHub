@@ -47,6 +47,31 @@ def test_run_agent_uses_native_inference_only_network() -> None:
     assert captured_env["AGEOS_SANDBOX_INFERENCE_PORT"] == "8000"
 
 
+def test_run_agent_allow_network_disables_isolation() -> None:
+    client = Mock()
+    client.register_agent.return_value = "agt-test"
+    client.native.run_sandbox.return_value = 0
+
+    with (
+        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
+        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+    ):
+        with pytest.raises(typer.Exit) as exc:
+            run_agent(
+                binary="/bin/true",
+                extra_args=[],
+                niceness=0,
+                memory="2G",
+                cpu=0,
+                speciality="default-instruct",
+                workdir=None,
+                allow_network=True,
+            )
+
+    assert exc.value.exit_code == 0
+    assert client.native.run_sandbox.call_args.kwargs["isolate_network"] is False
+
+
 def test_run_agent_stages_relative_binary_without_root_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     binary = tmp_path / "basic_agent.py"

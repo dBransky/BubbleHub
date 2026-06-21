@@ -89,7 +89,7 @@ Hardening policy:
 
 - Keep protected-root validation conservative.
 - Keep `/workspace` as the sandbox-facing root.
-- Require `--binary` to be inside `--root-dir` when a root is provided.
+- Require non-system `--binary` paths to be inside `--root-dir` when a root is provided; allow system binaries so `ageos shell --root-dir <dir>` can enter an existing workspace.
 - Do not bypass native sandboxing except through explicit `--unsafe-no-sandbox`.
 
 ### `ageos/cli/shell.py`

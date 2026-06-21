@@ -50,6 +50,7 @@ def command(
         help="Discard any persistent sandbox under --root-dir and start with a new agent home.",
     ),
     unsafe_no_sandbox: bool = typer.Option(False, "--unsafe-no-sandbox", help="Development escape hatch only."),
+    allow_network: bool = typer.Option(False, "--allow-network", help="Allow network access for the agent. This is useful for setting up the agent inside the sandbox environment."),
 ) -> None:
     """Run a binary as an AgeOS agent inside the hardened sandbox."""
 
@@ -64,6 +65,7 @@ def command(
         root_dir=root_dir,
         force_new_sandbox=force_new_sandbox,
         unsafe_no_sandbox=unsafe_no_sandbox,
+        allow_network=allow_network,
     )
 
 
@@ -79,6 +81,7 @@ def run_agent(
     root_dir: Path | None = None,
     unsafe_no_sandbox: bool = False,
     force_new_sandbox: bool = False,
+    allow_network: bool = False,
 ) -> None:
     """Run a binary as an AgeOS agent inside the hardened sandbox."""
 
@@ -105,7 +108,10 @@ def run_agent(
     env = dict()
     env["AGEOS_AGENT_ID"] = agent_id
     env["AGEOS_NICENESS"] = str(niceness)
-    env.pop("AGEOS_LOG_FILE", None)
+    # we want to see logs for the sandbox invocation, we will remove these later for the agent
+    env["AGEOS_LOG_FILE"] = os.environ.get("AGEOS_LOG_FILE", "")
+    env["AGEOS_LOG_LEVEL"] = os.environ.get("AGEOS_LOG_LEVEL", "")
+    env["AGEOS_ENABLE_SECCOMP"] = os.environ.get("AGEOS_ENABLE_SECCOMP", "")
     endpoint = apply_inference_env(env, speciality)
     log_info("using inference endpoint", endpoint)
     typer.echo(f"Using AgeOS inference endpoint at {endpoint}")
@@ -114,7 +120,7 @@ def run_agent(
     host_args = [*_argv_for_binary(resolved_binary), *extra_args]
     log_debug(
         "launching agent",
-        f"agent_id={agent_id} binary={resolved_binary} sandbox={not unsafe_no_sandbox}",
+        f"agent_id={agent_id} binary={resolved_binary} sandbox={not unsafe_no_sandbox} env={env}",
     )
     try:
         if platform.system() != "Linux" and not unsafe_no_sandbox:
@@ -134,7 +140,7 @@ def run_agent(
             workdir=cwd,
             root_dir=sandbox_paths.host_root_dir,
             env=env,
-            isolate_network=True,
+            isolate_network=not allow_network,
             inference_host=inference.host,
             inference_port=inference.host_port,
             sandbox_inference_port=inference.sandbox_port,
@@ -244,6 +250,9 @@ def _prepare_sandbox_binary(
     sandbox_paths: "SandboxPaths",
     agent_id: str,
 ) -> tuple["SandboxPaths", Path, tempfile.TemporaryDirectory[str] | None]:
+    if _is_sandbox_system_binary(resolved_binary):
+        return sandbox_paths, resolved_binary, None
+
     if sandbox_paths.host_root_dir is not None:
         host_root = Path(sandbox_paths.host_root_dir)
         if not _is_relative_to(resolved_binary, host_root):
@@ -253,9 +262,6 @@ def _prepare_sandbox_binary(
             _sandbox_workspace_path(resolved_binary, host_root, agent_id),
             None,
         )
-
-    if _is_sandbox_system_binary(resolved_binary):
-        return sandbox_paths, resolved_binary, None
 
     staging_dir = tempfile.TemporaryDirectory(prefix="ageos-workspace-")
     host_root = Path(staging_dir.name)

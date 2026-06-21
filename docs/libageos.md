@@ -28,7 +28,7 @@ Hardening is enforced by the native sandbox runtime.
 - Filesystem exposure must be explicit. A host `--root-dir` is mounted into the sandbox workspace view, not exposed as a host path in `$PWD`.
 - Sandbox `$PWD`, `$HOME`, `$TMPDIR`, `$AGEOS_WORKSPACE`, agent identity, `PATH`, locale, terminal type, and shell prompt must be set by the native sandbox setup.
 - Persistent agent homes must live under controlled `.ageos/agents/agt-*` directories and must not follow symlinks.
-- Network isolation is default for agents. Sandboxed agents only receive the local inference endpoint when `isolate_network` is enabled.
+- Network isolation is default for agents. Sandboxed agents only receive the local inference endpoint when `isolate_network` is enabled, and may receive general outbound network access only when the caller explicitly disables network isolation.
 - Resource limits such as memory and CPU are applied by native sandbox setup.
 - Native code should prefer fail-closed behavior. If setup, mount, user isolation, scheduler state, or inference forwarding cannot be established, return an error instead of silently relaxing restrictions.
 
@@ -77,7 +77,7 @@ Hardening policy for this file:
 - Do not expose host root or host working directories as sandbox `$PWD`.
 - Keep `/workspace` as the sandbox-facing root-dir mount point.
 - Reject unsafe persistent paths and symlink escapes.
-- Keep inference-only networking separate from general outbound networking.
+- Keep inference-only networking separate from explicit general outbound networking.
 
 ### `libageos/include/ageos/sandbox.h`
 
