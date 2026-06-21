@@ -743,6 +743,11 @@ static int setup_sandbox_home(
     setenv("USER", agent_name, 1);
     setenv("LOGNAME", agent_name, 1);
     setenv("SHELL", "/bin/sh", 1);
+    setenv("PATH", "/usr/local/bin:/opt/ageos/bin:/usr/bin:/bin", 1);
+    setenv("LANG", "en_US.UTF-8", 1);
+    setenv("LANGUAGE", "en_US.UTF-8", 1);
+    setenv("TERM", "xterm-256color", 1);
+    setenv("PS1", "\\[\\e[1;32m\\]\\u\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ ", 1);
     setenv("AGEOS_AGENT_HOME", visible_home_path, 1);
     setenv("AGEOS_WORKSPACE", visible_workspace_path, 1);
     return setup_sandbox_identity_files(identity_agent_dir, agent_name, visible_home_path, agent_uid, agent_gid);

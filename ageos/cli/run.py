@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -20,6 +21,12 @@ _AGENT_ID_RE = re.compile(r"^agt-[A-Za-z0-9_-]+$")
 _AGEOS_DIR = ".ageos"
 _AGENTS_DIR = "agents"
 _CURRENT_AGENT_FILE = "current-agent"
+_SANDBOX_SYSTEM_PREFIXES = (
+    Path("/usr"),
+    Path("/bin"),
+    Path("/sbin"),
+    Path("/opt/ageos"),
+)
 
 
 def command(
@@ -90,13 +97,15 @@ def run_agent(
     if persistent.reused:
         log_info("reusing persistent sandbox", agent_id)
         typer.echo(f"Persistent sandbox found: reusing {agent_id}")
-    sandbox_binary = _sandbox_path_for_host_path(resolved_binary, sandbox_paths, agent_id)
-    env = os.environ.copy()
+    sandbox_paths, sandbox_binary, staging_dir = _prepare_sandbox_binary(
+        resolved_binary,
+        sandbox_paths,
+        agent_id,
+    )
+    env = dict()
     env["AGEOS_AGENT_ID"] = agent_id
     env["AGEOS_NICENESS"] = str(niceness)
-    env.setdefault("AGEOS_CACHE", str(Path.home() / ".cache" / "ageos"))
     env.pop("AGEOS_LOG_FILE", None)
-    _add_pnpm_home_to_path(env)
     endpoint = apply_inference_env(env, speciality)
     log_info("using inference endpoint", endpoint)
     typer.echo(f"Using AgeOS inference endpoint at {endpoint}")
@@ -133,6 +142,8 @@ def run_agent(
         log_debug("sandbox exited", f"agent_id={agent_id} exit_code={exit_code}")
         raise typer.Exit(exit_code)
     finally:
+        if staging_dir is not None:
+            staging_dir.cleanup()
         client.deregister_agent(agent_id)
 
 
@@ -228,14 +239,49 @@ def _resolve_binary(binary: str, cwd: Path) -> Path:
     raise typer.BadParameter(f"binary not found on PATH or node_modules/.bin: {binary}")
 
 
-def _sandbox_path_for_host_path(path: Path, sandbox_paths: "SandboxPaths", agent_id: str) -> Path:
-    if sandbox_paths.host_root_dir is None:
-        return path
-    host_root = Path(sandbox_paths.host_root_dir)
-    if not _is_relative_to(path, host_root):
-        raise typer.BadParameter("--binary must be inside --root-dir")
+def _prepare_sandbox_binary(
+    resolved_binary: Path,
+    sandbox_paths: "SandboxPaths",
+    agent_id: str,
+) -> tuple["SandboxPaths", Path, tempfile.TemporaryDirectory[str] | None]:
+    if sandbox_paths.host_root_dir is not None:
+        host_root = Path(sandbox_paths.host_root_dir)
+        if not _is_relative_to(resolved_binary, host_root):
+            raise typer.BadParameter("--binary must be inside --root-dir")
+        return (
+            sandbox_paths,
+            _sandbox_workspace_path(resolved_binary, host_root, agent_id),
+            None,
+        )
+
+    if _is_sandbox_system_binary(resolved_binary):
+        return sandbox_paths, resolved_binary, None
+
+    staging_dir = tempfile.TemporaryDirectory(prefix="ageos-workspace-")
+    host_root = Path(staging_dir.name)
+    staged_binary = host_root / resolved_binary.name
+    shutil.copy2(resolved_binary, staged_binary)
+    log_debug("staged sandbox binary", f"source={resolved_binary} dest={staged_binary}")
+    staged_paths = SandboxPaths(
+        host_workdir=host_root,
+        sandbox_workdir="/workspace",
+        host_root_dir=str(host_root),
+    )
+    return (
+        staged_paths,
+        _sandbox_workspace_path(staged_binary, host_root, agent_id),
+        staging_dir,
+    )
+
+
+def _sandbox_workspace_path(path: Path, host_root: Path, agent_id: str) -> Path:
     relative = path.relative_to(host_root)
     return Path("/home") / agent_id / "workspace" / relative
+
+
+def _is_sandbox_system_binary(path: Path) -> bool:
+    resolved = path.resolve()
+    return any(_is_relative_to(resolved, prefix) for prefix in _SANDBOX_SYSTEM_PREFIXES)
 
 
 def _argv_for_binary(binary: Path | str) -> list[str]:
@@ -249,13 +295,6 @@ def _argv_for_binary(binary: Path | str) -> list[str]:
 def _ageos_python() -> str:
     ageos_python = Path(os.environ.get("AGEOS_PYTHON", "/opt/ageos/bin/python"))
     return str(ageos_python if ageos_python.exists() else Path(sys.executable))
-
-
-def _add_pnpm_home_to_path(env: dict[str, str]) -> None:
-    pnpm_home = env.get("PNPM_HOME") or str(Path.home() / ".local" / "share" / "pnpm")
-    env["PNPM_HOME"] = pnpm_home
-    path_parts = [str(Path(pnpm_home) / "bin"), pnpm_home, env.get("PATH", "")]
-    env["PATH"] = ":".join(part for part in path_parts if part)
 
 
 def _run_native_sandbox(
