@@ -10,6 +10,9 @@ typedef struct {
     uint32_t cpu_percent;
     const char *workdir;
     const char *root_dir;
+    const char *rootfs_dir;
+    const char *overlay_upper_dir;
+    const char *overlay_work_dir;
     int isolate_network;
     const char *inference_host;
     uint32_t inference_port;

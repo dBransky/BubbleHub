@@ -40,12 +40,11 @@ jobs:
       AGEOS_RUN_INTEGRATION: "1"
       AGEOS_CACHE: /cache/ageos
       AGEOS_MODELS_CONFIG: /cache/ageos/ci-models.yaml
+      AGEOS_INTEGRATION_WORKSPACE_DIR: /cache/ageos/integration-workspaces
       AGEOS_LLAMA_CTX_SIZE: "512"
       AGEOS_MAX_OUTPUT_TOKENS: "32"
       NO_PROXY: 127.0.0.1,localhost
-      PNPM_HOME: /opt/pnpm
       OPENCLAW_CACHE_DIR: /cache/openclaw
-      PNPM_STORE_DIR: /cache/openclaw/pnpm-store
     steps:
       - uses: actions/checkout@v4
 
@@ -59,17 +58,18 @@ jobs:
           restore-keys: |
             ageos-models-${{ runner.os }}-
 
-      - name: Restore pnpm cache
+      - name: Restore OpenClaw source cache
         uses: actions/cache@v4
         with:
-          path: .pnpm-store
-          key: pnpm-openclaw-${{ runner.os }}-${{ hashFiles('scripts/ci/prepare-openclaw.sh') }}
+          path: .openclaw-cache
+          key: openclaw-source-${{ runner.os }}-${{ hashFiles('scripts/ci/prepare-openclaw.sh') }}
           restore-keys: |
-            pnpm-openclaw-${{ runner.os }}-
+            openclaw-source-${{ runner.os }}-
 
       - name: Prepare cache and artifact directories
         run: |
-          mkdir -p .ageos-cache .pnpm-store .ci-artifacts
+          mkdir -p .ageos-cache/integration-workspaces .openclaw-cache .ci-artifacts
+          chmod -R a+rwX .ageos-cache .openclaw-cache
 
       - name: Build integration test image
         uses: docker/build-push-action@v6
@@ -79,7 +79,9 @@ jobs:
           target: integration-test
           load: true
           tags: ageos-runtime:integration-${{ github.sha }}
-          cache-from: type=gha,scope=integration-test
+          cache-from: |
+            type=gha,scope=integration-test
+            type=gha,scope=unit-test
           cache-to: type=gha,mode=max,scope=integration-test
 
       - name: Run integration tests
@@ -93,20 +95,20 @@ jobs:
             -e AGEOS_RUN_INTEGRATION \
             -e AGEOS_CACHE \
             -e AGEOS_MODELS_CONFIG \
+            -e AGEOS_INTEGRATION_WORKSPACE_DIR \
             -e AGEOS_LLAMA_CTX_SIZE \
             -e AGEOS_MAX_OUTPUT_TOKENS \
             -e NO_PROXY \
-            -e PNPM_HOME \
             -e OPENCLAW_CACHE_DIR \
-            -e PNPM_STORE_DIR \
             -v "${{ github.workspace }}/.ageos-cache:/cache/ageos" \
-            -v "${{ github.workspace }}/.pnpm-store:/cache/openclaw" \
+            -v "${{ github.workspace }}/.openclaw-cache:/cache/openclaw" \
             ageos-runtime:integration-${{ github.sha }}
           status=$?
 
           mkdir -p .ci-artifacts
           docker cp ageos-integration:/tmp .ci-artifacts/tmp >/dev/null 2>&1 || true
           docker cp ageos-integration:/src/examples .ci-artifacts/examples >/dev/null 2>&1 || true
+          docker cp ageos-integration:/cache/ageos/integration-workspaces .ci-artifacts/integration-workspaces >/dev/null 2>&1 || true
           docker rm -f ageos-integration >/dev/null 2>&1 || true
           exit "$status"
 
@@ -122,6 +124,12 @@ jobs:
             .ci-artifacts/tmp/openclaw/*.log
             .ci-artifacts/examples/**/.ageos/**/.openclaw/**/*.jsonl
             .ci-artifacts/examples/**/.ageos/**/.openclaw/**/*.json
+            .ci-artifacts/integration-workspaces/**/.ageos/**/.openclaw/**/*.jsonl
+            .ci-artifacts/integration-workspaces/**/.ageos/**/.openclaw/**/*.json
+
+      - name: Clean transient integration workspaces
+        if: always()
+        run: rm -rf .ageos-cache/integration-workspaces
 
   publish-runtime-image:
     runs-on: ubuntu-22.04
@@ -158,7 +166,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=runtime
+          cache-from: |
+            type=gha,scope=runtime
+            type=gha,scope=integration-test
+            type=gha,scope=unit-test
           cache-to: type=gha,mode=max,scope=runtime
 
       - name: Write image digest artifact

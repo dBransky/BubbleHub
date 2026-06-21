@@ -6,6 +6,7 @@
 .ruff_cache/
 .venv/
 .ci-artifacts/
+.openclaw-cache/
 .pnpm-store/
 __pycache__/
 *.egg-info/

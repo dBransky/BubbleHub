@@ -11,6 +11,7 @@ sudo apt-get install -y \
   build-essential \
   cmake \
   curl \
+  debootstrap \
   git \
   libseccomp-dev \
   meson \

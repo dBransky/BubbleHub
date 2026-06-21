@@ -21,6 +21,11 @@ _AGENT_ID_RE = re.compile(r"^agt-[A-Za-z0-9_-]+$")
 _AGEOS_DIR = ".ageos"
 _AGENTS_DIR = "agents"
 _CURRENT_AGENT_FILE = "current-agent"
+_OVERLAY_DIR = "overlay"
+_OVERLAY_UPPER_DIR = "upper"
+_OVERLAY_WORK_DIR = "work"
+_DEFAULT_ROOTFS_DIR = Path("/opt/ageos/rootfs/ubuntu-26.04")
+_ROOTFS_RELEASE = "ubuntu-26.04"
 _SANDBOX_SYSTEM_PREFIXES = (
     Path("/usr"),
     Path("/bin"),
@@ -47,6 +52,7 @@ def command(
     force_new_sandbox: bool = typer.Option(
         False,
         "--force-new-sandbox",
+        "--overwrite-sandbox",
         help="Discard any persistent sandbox under --root-dir and start with a new agent home.",
     ),
     unsafe_no_sandbox: bool = typer.Option(False, "--unsafe-no-sandbox", help="Development escape hatch only."),
@@ -87,6 +93,7 @@ def run_agent(
 
     client = SchedulerClient.local()
     sandbox_paths = _resolve_sandbox_paths(root_dir, workdir)
+    rootfs_dir = _resolve_rootfs_dir()
     cwd_path = sandbox_paths.host_workdir
     resolved_binary = _resolve_binary(binary, cwd_path)
     persistent = _select_persistent_sandbox(sandbox_paths.host_root_dir, force_new=force_new_sandbox)
@@ -105,6 +112,16 @@ def run_agent(
         sandbox_paths,
         agent_id,
     )
+    overlay_workspace_dir: tempfile.TemporaryDirectory[str] | None = None
+    if rootfs_dir is not None and sandbox_paths.host_root_dir is None:
+        overlay_workspace_dir = tempfile.TemporaryDirectory(prefix="ageos-workspace-")
+        host_root = Path(overlay_workspace_dir.name)
+        sandbox_paths = SandboxPaths(
+            host_workdir=host_root,
+            sandbox_workdir="/workspace",
+            host_root_dir=str(host_root),
+        )
+    overlay_paths = _prepare_overlay_paths(sandbox_paths.host_root_dir, agent_id, rootfs_dir)
     env = dict()
     env["AGEOS_AGENT_ID"] = agent_id
     env["AGEOS_NICENESS"] = str(niceness)
@@ -112,6 +129,11 @@ def run_agent(
     env["AGEOS_LOG_FILE"] = os.environ.get("AGEOS_LOG_FILE", "")
     env["AGEOS_LOG_LEVEL"] = os.environ.get("AGEOS_LOG_LEVEL", "")
     env["AGEOS_ENABLE_SECCOMP"] = os.environ.get("AGEOS_ENABLE_SECCOMP", "")
+    ageos_pythonpath = _ageos_site_packages()
+    if ageos_pythonpath is not None:
+        env["AGEOS_PYTHONPATH"] = str(ageos_pythonpath)
+    if rootfs_dir is not None:
+        env["AGEOS_ROOTFS_RELEASE"] = _ROOTFS_RELEASE
     endpoint = apply_inference_env(env, speciality)
     log_info("using inference endpoint", endpoint)
     typer.echo(f"Using AgeOS inference endpoint at {endpoint}")
@@ -139,6 +161,9 @@ def run_agent(
             niceness=niceness,
             workdir=cwd,
             root_dir=sandbox_paths.host_root_dir,
+            rootfs_dir=str(rootfs_dir) if rootfs_dir is not None else None,
+            overlay_upper_dir=str(overlay_paths.upper_dir) if overlay_paths is not None else None,
+            overlay_work_dir=str(overlay_paths.work_dir) if overlay_paths is not None else None,
             env=env,
             isolate_network=not allow_network,
             inference_host=inference.host,
@@ -150,6 +175,8 @@ def run_agent(
     finally:
         if staging_dir is not None:
             staging_dir.cleanup()
+        if overlay_workspace_dir is not None:
+            overlay_workspace_dir.cleanup()
         client.deregister_agent(agent_id)
 
 
@@ -157,6 +184,12 @@ def run_agent(
 class PersistentSandbox:
     agent_id: str | None
     reused: bool = False
+
+
+@dataclass(frozen=True)
+class OverlayPaths:
+    upper_dir: Path
+    work_dir: Path
 
 
 def _select_persistent_sandbox(root_dir: str | None, *, force_new: bool) -> PersistentSandbox:
@@ -222,6 +255,36 @@ def _is_persistent_agent_dir(path: Path) -> bool:
 
 def _is_valid_agent_id(agent_id: str) -> bool:
     return bool(_AGENT_ID_RE.fullmatch(agent_id))
+
+
+def _resolve_rootfs_dir() -> Path | None:
+    if os.environ.get("AGEOS_DISABLE_ROOTFS") == "1":
+        return None
+    configured = os.environ.get("AGEOS_ROOTFS_DIR")
+    rootfs = Path(configured).expanduser() if configured else _DEFAULT_ROOTFS_DIR
+    if not rootfs.exists():
+        if configured:
+            raise typer.BadParameter(f"AgeOS rootfs not found: {rootfs}")
+        return None
+    if not rootfs.is_dir():
+        raise typer.BadParameter(f"AgeOS rootfs is not a directory: {rootfs}")
+    return rootfs.resolve()
+
+
+def _prepare_overlay_paths(root_dir: str | None, agent_id: str, rootfs_dir: Path | None) -> OverlayPaths | None:
+    if rootfs_dir is None or root_dir is None:
+        return None
+    if not _is_valid_agent_id(agent_id):
+        raise typer.BadParameter(f"invalid agent id for persistent overlay: {agent_id}")
+    agent_dir = Path(root_dir) / _AGEOS_DIR / _AGENTS_DIR / agent_id
+    overlay_dir = agent_dir / _OVERLAY_DIR
+    upper_dir = overlay_dir / _OVERLAY_UPPER_DIR
+    work_dir = overlay_dir / _OVERLAY_WORK_DIR
+    for path in (agent_dir, overlay_dir, upper_dir, work_dir):
+        if path.is_symlink():
+            raise typer.BadParameter(f"persistent sandbox path cannot be a symlink: {path}")
+        path.mkdir(mode=0o700, parents=True, exist_ok=True)
+    return OverlayPaths(upper_dir=upper_dir.resolve(), work_dir=work_dir.resolve())
 
 
 def _resolve_binary(binary: str, cwd: Path) -> Path:
@@ -303,6 +366,21 @@ def _ageos_python() -> str:
     return str(ageos_python if ageos_python.exists() else Path(sys.executable))
 
 
+def _ageos_site_packages() -> Path | None:
+    candidates: list[Path] = []
+    install_prefix = Path(os.environ.get("AGEOS_PREFIX", "/opt/ageos"))
+    lib_dir = install_prefix / "lib"
+    if lib_dir.is_dir():
+        candidates.extend(sorted(lib_dir.glob("python*/site-packages"), reverse=True))
+    runtime_site = Path(sys.prefix) / "lib"
+    if runtime_site.is_dir():
+        candidates.extend(sorted(runtime_site.glob("python*/site-packages"), reverse=True))
+    for candidate in candidates:
+        if (candidate / "ageos").is_dir():
+            return candidate
+    return None
+
+
 def _run_native_sandbox(
     client: SchedulerClient,
     target_args: list[str],
@@ -312,6 +390,9 @@ def _run_native_sandbox(
     niceness: int,
     workdir: str,
     root_dir: str | None,
+    rootfs_dir: str | None,
+    overlay_upper_dir: str | None,
+    overlay_work_dir: str | None,
     env: dict[str, str],
     isolate_network: bool,
     inference_host: str | None = None,
@@ -332,6 +413,9 @@ def _run_native_sandbox(
             cpu_percent=cpu,
             workdir=workdir,
             root_dir=root_dir,
+            rootfs_dir=rootfs_dir,
+            overlay_upper_dir=overlay_upper_dir,
+            overlay_work_dir=overlay_work_dir,
             isolate_network=isolate_network,
             inference_host=inference_host,
             inference_port=inference_port,

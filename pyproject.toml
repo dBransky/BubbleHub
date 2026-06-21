@@ -49,6 +49,7 @@ ageos = ["config/*.yaml"]
   "libageos/limits.c",
   "libageos/log.c",
   "libageos/meson.build",
+  "libageos/overfs.c",
   "libageos/scheduler.c",
   "libageos/sandbox.c",
 ]
@@ -56,11 +57,13 @@ ageos = ["config/*.yaml"]
   "libageos/include/ageos/hw.h",
   "libageos/include/ageos/limits.h",
   "libageos/include/ageos/log.h",
+  "libageos/include/ageos/overfs.h",
   "libageos/include/ageos/scheduler.h",
   "libageos/include/ageos/sandbox.h",
 ]
 "share/ageos/scripts" = [
   "scripts/build.sh",
+  "scripts/create-rootfs.sh",
   "scripts/install.ps1",
   "scripts/install.sh",
   "scripts/install-deps.sh",

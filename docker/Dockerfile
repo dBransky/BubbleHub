@@ -17,6 +17,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       ca-certificates \
       cmake \
       curl \
+      debootstrap \
       git \
       libseccomp-dev \
       meson \
@@ -64,7 +65,13 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 CMD ["scripts/ci/run-unit-tests.sh"]
 
-FROM llama AS runtime
+FROM llama AS rootfs
+
+COPY scripts/create-rootfs.sh /src/scripts/create-rootfs.sh
+
+RUN SUDO= /src/scripts/create-rootfs.sh
+
+FROM rootfs AS runtime
 
 COPY . /src
 
@@ -76,28 +83,13 @@ CMD ["ageos", "--help"]
 
 FROM runtime AS integration-test
 
-ARG NODE_VERSION=22.19.0
-ARG PNPM_VERSION=11.2.2
-
-ENV PNPM_HOME=/opt/pnpm \
-    PATH=/opt/pnpm:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
-
-RUN curl -fsSLO "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" && \
-    tar -xJf "node-v${NODE_VERSION}-linux-x64.tar.xz" -C /usr/local --strip-components=1 && \
-    rm "node-v${NODE_VERSION}-linux-x64.tar.xz" && \
-    mkdir -p "${PNPM_HOME}" && \
-    corepack enable && \
-    corepack prepare "pnpm@${PNPM_VERSION}" --activate && \
-    node --version && \
-    pnpm --version
-
 ENV AGEOS_RUN_INTEGRATION=1 \
     AGEOS_CACHE=/cache/ageos \
     AGEOS_MODELS_CONFIG=/cache/ageos/ci-models.yaml \
+    AGEOS_INTEGRATION_WORKSPACE_DIR=/cache/ageos/integration-workspaces \
     AGEOS_LLAMA_CTX_SIZE=512 \
     AGEOS_MAX_OUTPUT_TOKENS=32 \
     NO_PROXY=127.0.0.1,localhost \
-    OPENCLAW_CACHE_DIR=/cache/openclaw \
-    PNPM_STORE_DIR=/cache/openclaw/pnpm-store
+    OPENCLAW_CACHE_DIR=/cache/openclaw
 
 CMD ["scripts/ci/run-integration-tests.sh"]

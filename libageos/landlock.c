@@ -125,14 +125,6 @@ static int add_env_or_home_cache_rule(int ruleset_fd) {
     return add_home_child_rule(ruleset_fd, ".cache/ageos", read_rights());
 }
 
-static int add_env_or_home_pnpm_rule(int ruleset_fd) {
-    const char *pnpm_home = getenv("PNPM_HOME");
-    if (pnpm_home != NULL && pnpm_home[0] != '\0') {
-        return add_path_rule(ruleset_fd, pnpm_home, read_rights());
-    }
-    return add_home_child_rule(ruleset_fd, ".local/share/pnpm", read_rights());
-}
-
 static int add_scheduler_state_rule(int ruleset_fd, int abi) {
     const char *state_path = getenv("AGEOS_SCHEDULER_STATE");
     if (state_path == NULL || state_path[0] == '\0') {
@@ -147,6 +139,14 @@ static int add_models_config_rule(int ruleset_fd) {
         return 0;
     }
     return add_path_rule(ruleset_fd, config_path, readonly_file_rights());
+}
+
+static int add_rootfs_rule(int ruleset_fd) {
+    const char *rootfs_path = getenv("AGEOS_ROOTFS_DIR");
+    if (rootfs_path == NULL || rootfs_path[0] == '\0') {
+        return 0;
+    }
+    return add_path_rule(ruleset_fd, rootfs_path, read_rights());
 }
 
 static int add_identity_file_rules(int ruleset_fd) {
@@ -278,17 +278,17 @@ int ageos_landlock_apply_filesystem(const char *writable_dir, int allow_dns) {
         close(ruleset_fd);
         return rc;
     }
-    rc = add_env_or_home_pnpm_rule(ruleset_fd);
-    if (rc != 0) {
-        close(ruleset_fd);
-        return rc;
-    }
     rc = add_scheduler_state_rule(ruleset_fd, abi);
     if (rc != 0) {
         close(ruleset_fd);
         return rc;
     }
     rc = add_models_config_rule(ruleset_fd);
+    if (rc != 0) {
+        close(ruleset_fd);
+        return rc;
+    }
+    rc = add_rootfs_rule(ruleset_fd);
     if (rc != 0) {
         close(ruleset_fd);
         return rc;
