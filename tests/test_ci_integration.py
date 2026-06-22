@@ -439,6 +439,28 @@ def test_ubuntu_rootfs_overlay_environment_and_private_copyup(
     assert reset_agent_id != agent_id
 
 
+def test_ageos_cli_runs_inside_ubuntu_rootfs_sandbox(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+) -> None:
+    root_dir = integration_workspace_factory(tmp_path, "nested-ageos-cli")
+
+    result = _run_rootfs_shell(
+        root_dir,
+        env=integration_env,
+        script=(
+            "set -eu; "
+            "help_output=\"$(ageos --help)\"; "
+            "printf '%s\\n' \"$help_output\"; "
+            "printf '%s\\n' \"$help_output\" | grep -q 'AgeOS local agent runtime'; "
+            "ageos --version | grep -q '^ageos '"
+        ),
+    )
+
+    assert "AgeOS local agent runtime" in result.stdout
+
+
 def test_sandbox_installs_openclaw_with_nvm_and_npm(
     integration_env: dict[str, str],
     tmp_path: Path,

@@ -126,12 +126,12 @@ ${SUDO} mkdir -p "$BIN_DIR"
 ${SUDO} rm -f "$BIN_DIR/ageos" "$BIN_DIR/ageos-node"
 ${SUDO} tee "$BIN_DIR/ageos" >/dev/null <<EOF
 #!/usr/bin/env bash
-exec "$INSTALL_PREFIX/bin/python" -I -c 'import sys; sys.argv[0] = "ageos"; from ageos.cli.main import run_cli; run_cli()' "\$@"
+exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("AGEOS_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path("$INSTALL_PREFIX") / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "ageos").is_dir()]; sys.argv[0] = "ageos"; from ageos.cli.main import run_cli; run_cli()' "\$@"
 EOF
 ${SUDO} chmod 0755 "$BIN_DIR/ageos"
 ${SUDO} tee "$BIN_DIR/ageos-node" >/dev/null <<EOF
 #!/usr/bin/env bash
-exec "$INSTALL_PREFIX/bin/python" -I -c 'import sys; sys.argv[0] = "ageos-node"; from ageos.node.daemon import main; raise SystemExit(main())' "\$@"
+exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("AGEOS_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path("$INSTALL_PREFIX") / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "ageos").is_dir()]; sys.argv[0] = "ageos-node"; from ageos.node.daemon import main; raise SystemExit(main())' "\$@"
 EOF
 ${SUDO} chmod 0755 "$BIN_DIR/ageos-node"
 ${SUDO} ln -sf "$INSTALL_PREFIX/bin/pytest" "$BIN_DIR/pytest"
