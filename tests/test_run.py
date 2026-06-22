@@ -5,10 +5,11 @@ from unittest.mock import Mock, patch
 import pytest
 import typer
 
-from ageos.cli.run import _resolve_sandbox_paths, run_agent
+from ageos.cli.run import _resolve_rootfs_dir, _resolve_sandbox_paths, run_agent
 
 
-def test_run_agent_uses_native_inference_only_network() -> None:
+def test_run_agent_uses_native_inference_only_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGEOS_DISABLE_ROOTFS", "1")
     client = Mock()
     client.register_agent.return_value = "agt-test"
     captured_env: dict[str, str] = {}
@@ -290,6 +291,94 @@ def test_run_agent_force_new_sandbox_removes_existing_agent_home(
     assert not agent_dir.exists()
     assert (tmp_path / ".ageos" / "current-agent").read_text(encoding="utf-8") == "agt-new\n"
     assert "Persistent sandbox found" not in capsys.readouterr().out
+
+
+def test_run_agent_passes_rootfs_and_overlay_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    root_dir = tmp_path / "workspace"
+    root_dir.mkdir()
+    binary = root_dir / "agent.py"
+    binary.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    monkeypatch.setenv("AGEOS_ROOTFS_DIR", str(rootfs))
+    client = Mock()
+    client.register_agent.return_value = "agt-test"
+    captured_env: dict[str, str] = {}
+
+    def run_sandbox(*_args: object, **_kwargs: object) -> int:
+        captured_env.update(os.environ)
+        return 0
+
+    client.native.run_sandbox.side_effect = run_sandbox
+
+    with (
+        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
+        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+    ):
+        with pytest.raises(typer.Exit) as exc:
+            run_agent(
+                binary=str(binary),
+                extra_args=[],
+                niceness=0,
+                memory="2G",
+                cpu=0,
+                speciality="default-instruct",
+                workdir=None,
+                root_dir=root_dir,
+            )
+
+    assert exc.value.exit_code == 0
+    kwargs = client.native.run_sandbox.call_args.kwargs
+    assert kwargs["rootfs_dir"] == str(rootfs.resolve())
+    assert kwargs["overlay_upper_dir"] == str(root_dir / ".ageos" / "agents" / "agt-test" / "overlay" / "upper")
+    assert kwargs["overlay_work_dir"] == str(root_dir / ".ageos" / "agents" / "agt-test" / "overlay" / "work")
+    assert Path(kwargs["overlay_upper_dir"]).is_dir()
+    assert Path(kwargs["overlay_work_dir"]).is_dir()
+    assert captured_env["AGEOS_ROOTFS_RELEASE"] == "ubuntu-26.04"
+
+
+def test_run_agent_creates_temporary_overlay_workspace_for_system_binary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    rootfs = tmp_path / "rootfs"
+    rootfs.mkdir()
+    monkeypatch.setenv("AGEOS_ROOTFS_DIR", str(rootfs))
+    client = Mock()
+    client.register_agent.return_value = "agt-test"
+    overlay_roots: list[Path] = []
+
+    def run_sandbox(*_args: object, **kwargs: object) -> int:
+        overlay_upper = Path(str(kwargs["overlay_upper_dir"]))
+        overlay_roots.append(overlay_upper.parents[3])
+        assert overlay_upper.is_dir()
+        assert Path(str(kwargs["root_dir"])).name.startswith("ageos-workspace-")
+        return 0
+
+    client.native.run_sandbox.side_effect = run_sandbox
+
+    with (
+        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
+        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+    ):
+        with pytest.raises(typer.Exit) as exc:
+            run_agent(
+                binary="/bin/true",
+                extra_args=[],
+                niceness=0,
+                memory="2G",
+                cpu=0,
+                speciality="default-instruct",
+                workdir=None,
+            )
+
+    assert exc.value.exit_code == 0
+    assert len(overlay_roots) == 1
+    assert not overlay_roots[0].exists()
+
+
+def test_resolve_rootfs_dir_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGEOS_DISABLE_ROOTFS", "1")
+    assert _resolve_rootfs_dir() is None
 
 
 def test_sandbox_paths_default_to_empty_workspace() -> None:

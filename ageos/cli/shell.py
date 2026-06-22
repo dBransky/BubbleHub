@@ -26,6 +26,7 @@ def command(
     force_new_sandbox: bool = typer.Option(
         False,
         "--force-new-sandbox",
+        "--overwrite-sandbox",
         help="Discard any persistent sandbox under --root-dir and start with a new agent home.",
     ),
     allow_network: bool = typer.Option(False, "--allow-network", help="Allow network access for the agent. This is useful for setting up the agent inside the sandbox environment."),

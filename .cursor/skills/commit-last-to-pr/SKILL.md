@@ -14,6 +14,7 @@ Use this skill when the user wants the latest work prepared for a pull request. 
    - Run `git diff` and `git diff --staged`.
    - Check whether the current branch has an open PR with `gh pr view --json url,baseRefName,headRefName,state`.
    - If there is no open PR, determine the intended base branch from the user or repository default.
+   - Try to infer what issue this PR closes, treating the branch name as the leading signal. Look for issue numbers or slugs in the branch name first, then use commit messages, existing PR metadata, nearby issue references, or repository issue tracker results to confirm. If an issue is confidently identified, include a closing reference such as `Closes #123` or `Closes https://github.com/<owner>/<repo>/issues/123` in the suggested PR body. Do not invent an issue; if none can be inferred, say so in the final summary.
 
 2. Scan every commit that belongs to this PR branch, not only the last commit:
    - Find the base branch from the PR, for example `main`.
@@ -43,6 +44,7 @@ Use this skill when the user wants the latest work prepared for a pull request. 
 6. Report the result:
    - Summarize the full PR range reviewed, not just the last commit.
    - Mention docs updates, tests run, and any skipped checks or residual risk.
+   - Mention the inferred closing issue reference, or explicitly say that no closing issue could be inferred.
    - Mention that no commit or push was performed.
    - If there is an existing PR, include its URL.
    - End with a **Next steps** section containing copy-pasteable commands for the user to run in this order:
@@ -57,7 +59,7 @@ Use this template for the final commands and replace placeholders with the actua
 git add <updated-docs-and-related-files>
 git commit --amend
 git push
-gh pr create --title "<title>" --body "<body>"
+gh pr create --title "<title>" --body "<body including Closes #123 or a full issue URL when one was inferred>"
 ```
 
 If the branch has no upstream, use `git push -u origin HEAD`. If a PR already exists, omit `gh pr create` and include the existing PR URL instead.
@@ -70,6 +72,7 @@ Before finishing, verify:
 - [ ] The last commit does not hide regressions introduced by earlier commits on the branch.
 - [ ] Docs are updated or explicitly not needed.
 - [ ] Tests/checks appropriate to the change have passed or failures are explained.
+- [ ] Any likely closing issue was inferred and included as `Closes ...`, or the final summary explains that no issue could be inferred.
 - [ ] No secrets or unrelated local files are modified by this workflow.
 - [ ] The branch is not the default branch unless the user explicitly asked to prepare direct default-branch changes.
 - [ ] No commit, push, or PR creation was performed.

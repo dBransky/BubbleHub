@@ -10,6 +10,7 @@ libageos_sources = [
   'limits.c',
   'landlock.c',
   'log.c',
+  'overfs.c',
   'scheduler.c',
   'sandbox.c',
 ]

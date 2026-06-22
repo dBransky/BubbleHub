@@ -2,6 +2,7 @@
 
 #include "ageos/limits.h"
 #include "ageos/log.h"
+#include "ageos/overfs.h"
 #include "ageos/sandbox.h"
 
 #include <errno.h>
@@ -23,7 +24,6 @@
 #include <string.h>
 #include <linux/capability.h>
 #include <sys/ioctl.h>
-#include <sys/mount.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <sys/select.h>
@@ -162,7 +162,18 @@ static int apply_seccomp(int allow_network) {
         SCMP_SYS(timer_gettime), SCMP_SYS(timer_delete), SCMP_SYS(timer_getoverrun),
         SCMP_SYS(setuid), SCMP_SYS(setgid), SCMP_SYS(setreuid),
         SCMP_SYS(setregid), SCMP_SYS(mincore), SCMP_SYS(madvise),
-        SCMP_SYS(fcntl), SCMP_SYS(fsync)
+        SCMP_SYS(fcntl), SCMP_SYS(fsync), SCMP_SYS(fdatasync),
+        SCMP_SYS(mkdirat), SCMP_SYS(renameat), SCMP_SYS(renameat2),
+        SCMP_SYS(fchmod), SCMP_SYS(fchmodat), SCMP_SYS(chmod),
+        SCMP_SYS(ftruncate), SCMP_SYS(truncate), SCMP_SYS(utime),
+        SCMP_SYS(utimes), SCMP_SYS(utimensat), SCMP_SYS(umask),
+        SCMP_SYS(getrlimit), SCMP_SYS(getgroups), SCMP_SYS(setgroups),
+        SCMP_SYS(getresuid), SCMP_SYS(getresgid), SCMP_SYS(setresuid),
+        SCMP_SYS(setresgid), SCMP_SYS(getxattr), SCMP_SYS(lgetxattr),
+        SCMP_SYS(fgetxattr), SCMP_SYS(listxattr), SCMP_SYS(llistxattr),
+        SCMP_SYS(flistxattr), SCMP_SYS(setxattr), SCMP_SYS(lsetxattr),
+        SCMP_SYS(fsetxattr), SCMP_SYS(removexattr), SCMP_SYS(lremovexattr),
+        SCMP_SYS(fremovexattr)
     };
     int network_syscalls[] = {
         SCMP_SYS(socket), SCMP_SYS(connect), SCMP_SYS(bind), SCMP_SYS(listen),
@@ -208,16 +219,6 @@ static int apply_seccomp(int allow_network) {
     (void)allow_network;
     return 0;
 #endif
-}
-
-static int setup_mounts(const char *new_root, const char *workdir, const char *root_dir) {
-    (void)new_root;
-    (void)workdir;
-    (void)root_dir;
-    if (mount(NULL, "/", NULL, MS_REC | MS_PRIVATE, NULL) != 0) {
-        return -errno;
-    }
-    return 0;
 }
 
 static int setup_loopback(void) {
@@ -596,21 +597,45 @@ static int write_text_file(const char *path, const char *content, mode_t mode) {
     return rc == 0 ? 0 : -err;
 }
 
-static int bind_file_readonly(const char *source, const char *target) {
-    if (mount(source, target, NULL, MS_BIND, NULL) != 0) {
+static int write_text_file_if_missing(const char *path, const char *content, mode_t mode) {
+    struct stat st;
+    if (stat(path, &st) == 0) {
+        return S_ISREG(st.st_mode) ? 0 : -EINVAL;
+    }
+    if (errno != ENOENT) {
         return -errno;
     }
-    if (mount(NULL, target, NULL, MS_BIND | MS_REMOUNT | MS_RDONLY, NULL) != 0) {
-        return -errno;
-    }
-    return 0;
+    return write_text_file(path, content, mode);
 }
 
-static int bind_dir(const char *source, const char *target) {
-    if (mount(source, target, NULL, MS_BIND, NULL) != 0) {
-        return -errno;
+static int seed_sandbox_home_profiles(const char *home_path) {
+    char bashrc_path[PATH_MAX];
+    int written = snprintf(bashrc_path, sizeof(bashrc_path), "%s/.bashrc", home_path);
+    if (written < 0 || (size_t)written >= sizeof(bashrc_path)) {
+        return -ENAMETOOLONG;
     }
-    return 0;
+    int rc = write_text_file_if_missing(
+        bashrc_path,
+        "# AgeOS agent shell setup.\n",
+        0644
+    );
+    if (rc != 0) {
+        return rc;
+    }
+
+    char profile_path[PATH_MAX];
+    written = snprintf(profile_path, sizeof(profile_path), "%s/.profile", home_path);
+    if (written < 0 || (size_t)written >= sizeof(profile_path)) {
+        return -ENAMETOOLONG;
+    }
+    return write_text_file_if_missing(
+        profile_path,
+        "# AgeOS agent login shell setup.\n"
+        "if [ -f \"$HOME/.bashrc\" ]; then\n"
+        "  . \"$HOME/.bashrc\"\n"
+        "fi\n",
+        0644
+    );
 }
 
 static int relative_workdir(const char *workdir, const char *root_dir, char *buffer, size_t buffer_size) {
@@ -641,10 +666,70 @@ static int relative_workdir(const char *workdir, const char *root_dir, char *buf
     return (written < 0 || (size_t)written >= buffer_size) ? -ENAMETOOLONG : 0;
 }
 
-static int setup_sandbox_scheduler_env(uid_t host_uid) {
+static int bind_file_into_root_readwrite(const char *target_root, const char *path) {
+    if (target_root == NULL || target_root[0] == '\0' || path == NULL || path[0] != '/') {
+        return 0;
+    }
+    char target[PATH_MAX];
+    int rc = ageos_overfs_join_mount_path(target_root, path, target, sizeof(target));
+    if (rc != 0) {
+        return rc;
+    }
+    rc = ageos_overfs_ensure_file(target, 0600);
+    if (rc != 0) {
+        return rc;
+    }
+    return ageos_overfs_bind_file_readwrite(path, target);
+}
+
+static int bind_env_dir_into_root_readonly(const char *target_root, const char *env_name) {
+    if (target_root == NULL || target_root[0] == '\0') {
+        return 0;
+    }
+    const char *path = getenv(env_name);
+    if (path == NULL || path[0] != '/') {
+        return 0;
+    }
+    char target[PATH_MAX];
+    int rc = ageos_overfs_join_mount_path(target_root, path, target, sizeof(target));
+    if (rc != 0) {
+        return rc;
+    }
+    return ageos_overfs_bind_optional_dir_readonly(path, target);
+}
+
+static int bind_env_file_into_root_readonly(const char *target_root, const char *env_name) {
+    if (target_root == NULL || target_root[0] == '\0') {
+        return 0;
+    }
+    const char *path = getenv(env_name);
+    if (path == NULL || path[0] != '/') {
+        return 0;
+    }
+    char target[PATH_MAX];
+    int rc = ageos_overfs_join_mount_path(target_root, path, target, sizeof(target));
+    if (rc != 0) {
+        return rc;
+    }
+    return ageos_overfs_bind_optional_file_readonly(path, target);
+}
+
+static int bind_sandbox_env_paths(const char *target_root) {
+    int rc = bind_env_dir_into_root_readonly(target_root, "AGEOS_CACHE");
+    if (rc != 0) {
+        return rc;
+    }
+    return bind_env_file_into_root_readonly(target_root, "AGEOS_MODELS_CONFIG");
+}
+
+static int setup_sandbox_scheduler_env(uid_t host_uid, const char *target_root) {
     const char *explicit_path = getenv("AGEOS_SCHEDULER_STATE");
     if (explicit_path != NULL && explicit_path[0] != '\0') {
-        return touch_file(explicit_path);
+        int rc = touch_file(explicit_path);
+        if (rc != 0) {
+            return rc;
+        }
+        return bind_file_into_root_readwrite(target_root, explicit_path);
     }
 
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
@@ -673,11 +758,12 @@ static int setup_sandbox_scheduler_env(uid_t host_uid) {
         return touch_rc;
     }
     setenv("AGEOS_SCHEDULER_STATE", state_path, 1);
-    return 0;
+    return bind_file_into_root_readwrite(target_root, state_path);
 }
 
 static int setup_sandbox_identity_files(
     const char *agent_dir,
+    const char *target_root,
     const char *agent_name,
     const char *home_path,
     uid_t agent_uid,
@@ -727,16 +813,27 @@ static int setup_sandbox_identity_files(
     if (rc != 0) {
         return rc;
     }
-    rc = bind_file_readonly(passwd_path, "/etc/passwd");
+    char passwd_target[PATH_MAX];
+    char group_target[PATH_MAX];
+    rc = ageos_overfs_join_mount_path(target_root, "/etc/passwd", passwd_target, sizeof(passwd_target));
     if (rc != 0) {
         return rc;
     }
-    return bind_file_readonly(group_path, "/etc/group");
+    rc = ageos_overfs_join_mount_path(target_root, "/etc/group", group_target, sizeof(group_target));
+    if (rc != 0) {
+        return rc;
+    }
+    rc = ageos_overfs_bind_file_readonly(passwd_path, passwd_target);
+    if (rc != 0) {
+        return rc;
+    }
+    return ageos_overfs_bind_file_readonly(group_path, group_target);
 }
 
 static int setup_sandbox_home(
     const char *writable_dir,
     const char *identity_root,
+    const char *target_root,
     const char *workdir,
     const char *root_dir,
     uid_t agent_uid,
@@ -801,9 +898,23 @@ static int setup_sandbox_home(
     if (rc != 0) {
         return rc;
     }
+    rc = seed_sandbox_home_profiles(backing_home_path);
+    if (rc != 0) {
+        return rc;
+    }
 
-    if (mount("tmpfs", "/home", "tmpfs", MS_NOSUID | MS_NODEV, "size=64m") != 0) {
-        return -errno;
+    char home_mount_path[PATH_MAX];
+    rc = ageos_overfs_join_mount_path(target_root, "/home", home_mount_path, sizeof(home_mount_path));
+    if (rc != 0) {
+        return rc;
+    }
+    rc = ageos_overfs_mkdir_p(home_mount_path, 0755);
+    if (rc != 0) {
+        return rc;
+    }
+    rc = ageos_overfs_mount_tmpfs_at(home_mount_path, "size=64m");
+    if (rc != 0) {
+        return rc;
     }
 
     char visible_home_path[PATH_MAX];
@@ -811,11 +922,16 @@ static int setup_sandbox_home(
     if (written < 0 || (size_t)written >= sizeof(visible_home_path)) {
         return -ENAMETOOLONG;
     }
-    rc = mkdir_if_missing(visible_home_path, 0700);
+    char target_home_path[PATH_MAX];
+    rc = ageos_overfs_join_mount_path(target_root, visible_home_path, target_home_path, sizeof(target_home_path));
     if (rc != 0) {
         return rc;
     }
-    rc = bind_dir(backing_home_path, visible_home_path);
+    rc = ageos_overfs_mkdir_p(target_home_path, 0700);
+    if (rc != 0) {
+        return rc;
+    }
+    rc = ageos_overfs_bind_dir(backing_home_path, target_home_path);
     if (rc != 0) {
         return rc;
     }
@@ -825,11 +941,16 @@ static int setup_sandbox_home(
     if (written < 0 || (size_t)written >= sizeof(visible_workspace_path)) {
         return -ENAMETOOLONG;
     }
-    rc = mkdir_if_missing(visible_workspace_path, 0700);
+    char target_workspace_path[PATH_MAX];
+    rc = ageos_overfs_join_mount_path(target_root, visible_workspace_path, target_workspace_path, sizeof(target_workspace_path));
     if (rc != 0) {
         return rc;
     }
-    rc = bind_dir(writable_dir, visible_workspace_path);
+    rc = ageos_overfs_mkdir_p(target_workspace_path, 0700);
+    if (rc != 0) {
+        return rc;
+    }
+    rc = ageos_overfs_bind_dir(writable_dir, target_workspace_path);
     if (rc != 0) {
         return rc;
     }
@@ -847,9 +968,6 @@ static int setup_sandbox_home(
     if (written < 0 || (size_t)written >= workspace_cwd_size) {
         return -ENAMETOOLONG;
     }
-    if (chdir(workspace_cwd) != 0) {
-        return -errno;
-    }
     setenv("PWD", workspace_cwd, 1);
 
     char tmp_path[PATH_MAX];
@@ -857,7 +975,12 @@ static int setup_sandbox_home(
     if (written < 0 || (size_t)written >= sizeof(tmp_path)) {
         return -ENAMETOOLONG;
     }
-    rc = mkdir_if_missing(tmp_path, 0700);
+    char target_tmp_path[PATH_MAX];
+    rc = ageos_overfs_join_mount_path(target_root, tmp_path, target_tmp_path, sizeof(target_tmp_path));
+    if (rc != 0) {
+        return rc;
+    }
+    rc = ageos_overfs_mkdir_p(target_tmp_path, 0700);
     if (rc != 0) {
         return rc;
     }
@@ -874,31 +997,34 @@ static int setup_sandbox_home(
     setenv("PS1", "\\[\\e[1;32m\\]\\u\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ ", 1);
     setenv("AGEOS_AGENT_HOME", visible_home_path, 1);
     setenv("AGEOS_WORKSPACE", visible_workspace_path, 1);
-    return setup_sandbox_identity_files(identity_agent_dir, agent_name, visible_home_path, agent_uid, agent_gid);
+    return setup_sandbox_identity_files(identity_agent_dir, target_root, agent_name, visible_home_path, agent_uid, agent_gid);
 }
 
 static int setup_sandbox_runtime_env(
     const char *writable_dir,
     const char *identity_root,
+    const char *target_root,
     const char *workdir,
     const char *root_dir,
     uid_t host_uid,
     uid_t agent_uid,
-    gid_t agent_gid
+    gid_t agent_gid,
+    char *workspace_cwd,
+    size_t workspace_cwd_size
 ) {
     if (writable_dir == NULL || writable_dir[0] == '\0') {
         return -EINVAL;
     }
-    char workspace_cwd[PATH_MAX];
     int home_rc = setup_sandbox_home(
         writable_dir,
         identity_root,
+        target_root,
         workdir,
         root_dir,
         agent_uid,
         agent_gid,
         workspace_cwd,
-        sizeof(workspace_cwd)
+        workspace_cwd_size
     );
     if (home_rc != 0) {
         return home_rc;
@@ -906,10 +1032,31 @@ static int setup_sandbox_runtime_env(
     unsetenv("PYTHONPATH");
     unsetenv("PYTHONHOME");
     unsetenv("PYTHONUSERBASE");
+    const char *ageos_pythonpath = getenv("AGEOS_PYTHONPATH");
+    if (ageos_pythonpath != NULL && ageos_pythonpath[0] != '\0') {
+        setenv("PYTHONPATH", ageos_pythonpath, 1);
+    }
     unsetenv("AGEOS_LOG_FILE");
     unsetenv("AGEOS_LOG_LEVEL");
     setenv("PYTHONNOUSERSITE", "1", 1);
-    return setup_sandbox_scheduler_env(host_uid);
+    int env_bind_rc = bind_sandbox_env_paths(target_root);
+    if (env_bind_rc != 0) {
+        return env_bind_rc;
+    }
+    return setup_sandbox_scheduler_env(host_uid, target_root);
+}
+
+static int enter_sandbox_root(const char *target_root, const char *workspace_cwd) {
+    if (target_root != NULL && target_root[0] != '\0') {
+        if (chroot(target_root) != 0) {
+            return -errno;
+        }
+    }
+    if (chdir(workspace_cwd) != 0) {
+        return -errno;
+    }
+    setenv("PWD", workspace_cwd, 1);
+    return 0;
 }
 
 static int setup_user_namespace(uid_t agent_uid, gid_t agent_gid, int allow_network) {
@@ -953,17 +1100,7 @@ static int setup_user_namespace(uid_t agent_uid, gid_t agent_gid, int allow_netw
         return rc;
     }
 
-    if (setgid(agent_gid) != 0 || setuid(agent_uid) != 0) {
-        AGEOS_LOG_ERROR(
-            "failed to drop to sandbox agent identity",
-            "agent_uid=%u agent_gid=%u err=%s",
-            (unsigned int)agent_uid,
-            (unsigned int)agent_gid,
-            strerror(errno)
-        );
-        return -errno;
-    }
-    log_capability_state("after setuid");
+    log_capability_state("after uid/gid map");
     AGEOS_LOG_DEBUG(
         "sandbox user namespace ready",
         "uid=%u gid=%u allow_network=%d",
@@ -1071,6 +1208,12 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
         }
         setenv("PATH", path_buf, 1);
         setenv("AGEOS_SANDBOX", "1", 1);
+        if (ageos_overfs_rootfs_enabled(cfg)) {
+            setenv("AGEOS_ROOTFS_DIR", cfg->rootfs_dir, 1);
+            if (getenv("AGEOS_ROOTFS_RELEASE") == NULL) {
+                setenv("AGEOS_ROOTFS_RELEASE", "ubuntu-26.04", 1);
+            }
+        }
         ageos_apply_cgroup_limits(cfg);
         AGEOS_LOG_DEBUG("starting sandbox child setup", "pid=%lld", (long long)getpid());
         int userns_rc = setup_user_namespace(agent_uid, agent_gid, !cfg->isolate_network);
@@ -1116,33 +1259,41 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
                 setenv("AGEOS_NETWORK", "loopback", 1);
             }
         }
-        int mounts_rc = setup_mounts(sandbox_root, cfg->workdir, cfg->root_dir);
+        int rootfs_enabled = ageos_overfs_rootfs_enabled(cfg);
+        int mounts_rc = ageos_overfs_setup_mounts(sandbox_root, cfg);
         if (mounts_rc != 0) {
             AGEOS_LOG_ERROR("failed to create filesystem sandbox", "%s", strerror(-mounts_rc));
             _exit(126);
         }
         const char *writable_dir = (cfg->root_dir != NULL && cfg->root_dir[0] != '\0') ? cfg->root_dir : sandbox_root;
+        const char *target_root = rootfs_enabled ? sandbox_root : "";
+        char workspace_cwd[PATH_MAX];
         AGEOS_LOG_DEBUG(
             "applying sandbox runtime env",
-            "writable_dir=%s sandbox_root=%s workdir=%s",
+            "writable_dir=%s sandbox_root=%s target_root=%s workdir=%s",
             writable_dir,
             sandbox_root,
+            target_root,
             cfg->workdir
         );
         int env_rc = setup_sandbox_runtime_env(
             writable_dir,
             sandbox_root,
+            target_root,
             cfg->workdir,
             cfg->root_dir,
             host_uid,
             agent_uid,
-            agent_gid
+            agent_gid,
+            workspace_cwd,
+            sizeof(workspace_cwd)
         );
         if (env_rc != 0) {
             AGEOS_LOG_ERROR("failed to prepare sandbox runtime env", "%s", strerror(-env_rc));
             _exit(126);
         }
-        int landlock_rc = ageos_landlock_apply_filesystem(writable_dir, !cfg->isolate_network);
+        const char *policy_writable_dir = rootfs_enabled ? sandbox_root : writable_dir;
+        int landlock_rc = ageos_landlock_apply_filesystem(policy_writable_dir, !cfg->isolate_network);
         if (landlock_rc != 0) {
             AGEOS_LOG_ERROR("failed to apply filesystem policy", "%s", strerror(-landlock_rc));
             _exit(126);
@@ -1151,8 +1302,13 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
             "applied sandbox filesystem policy",
             "allow_dns=%d writable_dir=%s",
             !cfg->isolate_network,
-            writable_dir
+            policy_writable_dir
         );
+        int chroot_rc = enter_sandbox_root(target_root, workspace_cwd);
+        if (chroot_rc != 0) {
+            AGEOS_LOG_ERROR("failed to enter sandbox root", "%s", strerror(-chroot_rc));
+            _exit(126);
+        }
         log_capability_state("before no_new_privs");
         if (apply_no_new_privs() != 0) {
             AGEOS_LOG_ERROR("failed to apply no_new_privs", "%s", strerror(errno));

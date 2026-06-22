@@ -83,13 +83,14 @@ Typer application root. Registers top-level commands and model/specialty subcomm
 
 ### `ageos/cli/run.py`
 
-Implements `ageos run`. It resolves binaries, maps host root/workdir into sandbox paths, stages non-system binaries into a temporary workspace when no `--root-dir` is provided, handles persistent sandbox reuse metadata, registers/deregisters agents, prepares compatibility inference env vars, and calls native sandbox execution.
+Implements `ageos run`. It resolves binaries, maps host root/workdir into sandbox paths, stages non-system binaries into a temporary workspace when no `--root-dir` is provided, resolves the installed Ubuntu rootfs and per-agent overlay paths, handles persistent sandbox reuse metadata, registers/deregisters agents, prepares compatibility inference env vars, and calls native sandbox execution.
 
 Hardening policy:
 
 - Keep protected-root validation conservative.
 - Keep `/workspace` as the sandbox-facing root.
 - Require non-system `--binary` paths to be inside `--root-dir` when a root is provided; allow system binaries so `ageos shell --root-dir <dir>` can enter an existing workspace.
+- Pass rootfs and overlay paths to native code; do not mount or emulate overlay behavior in Python.
 - Do not bypass native sandboxing except through explicit `--unsafe-no-sandbox`.
 
 ### `ageos/cli/shell.py`

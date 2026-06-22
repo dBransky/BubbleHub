@@ -11,8 +11,14 @@ BUILD_DIR="$ROOT/libageos/build"
 C_SOURCE_DIR="$ROOT/libageos"
 SUDO="${SUDO:-sudo}"
 AGEOS_GPU_MODE="${AGEOS_GPU:-auto}"
+ROOTFS_DIR="${AGEOS_ROOTFS_DIR:-$INSTALL_PREFIX/rootfs/ubuntu-26.04}"
+ROOTFS_SUITE="${AGEOS_ROOTFS_SUITE:-resolute}"
+ROOTFS_VERSION="${AGEOS_ROOTFS_VERSION:-26.04}"
 NATIVE_STAGE=""
 PY_WHEEL_DIR=""
+PY_BUILD_ENV=""
+PRESERVED_ROOTFS=""
+PRESERVED_ROOTFS_PARENT=""
 
 cleanup() {
   if [[ -n "$NATIVE_STAGE" ]]; then
@@ -20,6 +26,17 @@ cleanup() {
   fi
   if [[ -n "$PY_WHEEL_DIR" ]]; then
     rm -rf "$PY_WHEEL_DIR"
+  fi
+  if [[ -n "$PY_BUILD_ENV" ]]; then
+    rm -rf "$PY_BUILD_ENV"
+  fi
+  if [[ -n "$PRESERVED_ROOTFS" && -e "$PRESERVED_ROOTFS" ]]; then
+    ${SUDO} mkdir -p "$(dirname "$ROOTFS_DIR")"
+    ${SUDO} mv "$PRESERVED_ROOTFS" "$ROOTFS_DIR"
+    PRESERVED_ROOTFS=""
+  fi
+  if [[ -n "$PRESERVED_ROOTFS_PARENT" ]]; then
+    ${SUDO} rm -rf "$PRESERVED_ROOTFS_PARENT"
   fi
 }
 trap cleanup EXIT
@@ -39,6 +56,13 @@ if ! command -v meson >/dev/null 2>&1; then
   exit 1
 fi
 
+rootfs_is_current() {
+  local stamp="$ROOTFS_DIR/.ageos-rootfs.json"
+  [[ -f "$stamp" ]] &&
+    grep -q "\"suite\": \"${ROOTFS_SUITE}\"" "$stamp" &&
+    grep -q "\"version\": \"${ROOTFS_VERSION}\"" "$stamp"
+}
+
 echo "Building native AgeOS core..."
 if [[ -f "$BUILD_DIR/meson-private/coredata.dat" ]]; then
   meson setup "$BUILD_DIR" "$C_SOURCE_DIR" --wipe --prefix=/usr/local
@@ -57,8 +81,10 @@ fi
 
 echo "Building AgeOS Python wheel..."
 PY_WHEEL_DIR="$(mktemp -d)"
-"$PYTHON_BIN" -m pip install --upgrade pip build
-"$PYTHON_BIN" -m build --wheel --outdir "$PY_WHEEL_DIR" "$ROOT"
+PY_BUILD_ENV="$(mktemp -d)"
+"$PYTHON_BIN" -m venv "$PY_BUILD_ENV"
+"$PY_BUILD_ENV/bin/python" -m pip install --upgrade pip build
+"$PY_BUILD_ENV/bin/python" -m build --wheel --outdir "$PY_WHEEL_DIR" "$ROOT"
 shopt -s nullglob
 AGEOS_WHEELS=("$PY_WHEEL_DIR"/ageos-*.whl)
 shopt -u nullglob
@@ -68,8 +94,19 @@ if [[ ${#AGEOS_WHEELS[@]} -eq 0 ]]; then
 fi
 
 echo "Installing AgeOS Python runtime into ${INSTALL_PREFIX}..."
+if [[ "${AGEOS_SKIP_ROOTFS:-0}" != "1" ]] && rootfs_is_current; then
+  PRESERVED_ROOTFS_PARENT="$(mktemp -d)"
+  PRESERVED_ROOTFS="$PRESERVED_ROOTFS_PARENT/ubuntu-26.04"
+  echo "Preserving existing AgeOS Ubuntu rootfs for fast rebuild: ${ROOTFS_DIR}"
+  ${SUDO} mv "$ROOTFS_DIR" "$PRESERVED_ROOTFS"
+fi
 ${SUDO} rm -rf "$INSTALL_PREFIX"
 ${SUDO} mkdir -p "$INSTALL_PREFIX"
+if [[ -n "$PRESERVED_ROOTFS" ]]; then
+  ${SUDO} mkdir -p "$(dirname "$ROOTFS_DIR")"
+  ${SUDO} mv "$PRESERVED_ROOTFS" "$ROOTFS_DIR"
+  PRESERVED_ROOTFS=""
+fi
 ${SUDO} "$PYTHON_BIN" -m venv "$INSTALL_PREFIX"
 ${SUDO} "$INSTALL_PREFIX/bin/python" -m pip install --upgrade pip
 ${SUDO} "$INSTALL_PREFIX/bin/python" -m pip install --find-links "$PY_WHEEL_DIR" "${AGEOS_WHEELS[0]}"
@@ -96,6 +133,15 @@ ${SUDO} chmod 0755 "$BIN_DIR/ageos-node"
 ${SUDO} ln -sf "$INSTALL_PREFIX/bin/pytest" "$BIN_DIR/pytest"
 if [[ -x /usr/local/bin/ageos-sandbox && "$BIN_DIR/ageos-sandbox" != "/usr/local/bin/ageos-sandbox" ]]; then
   ${SUDO} ln -sf /usr/local/bin/ageos-sandbox "$BIN_DIR/ageos-sandbox"
+fi
+
+if [[ "${AGEOS_SKIP_ROOTFS:-0}" == "1" ]]; then
+  echo "Skipping AgeOS Ubuntu rootfs because AGEOS_SKIP_ROOTFS=1."
+elif rootfs_is_current; then
+  echo "AgeOS Ubuntu rootfs already exists at ${ROOTFS_DIR}; skipping rootfs creation."
+else
+  echo "Creating AgeOS Ubuntu rootfs..."
+  AGEOS_ROOTFS_DIR="$ROOTFS_DIR" SUDO="$SUDO" "$ROOT/scripts/create-rootfs.sh"
 fi
 
 echo

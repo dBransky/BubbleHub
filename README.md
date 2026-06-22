@@ -23,7 +23,7 @@ Windows PowerShell, through WSL:
 irm https://ageos.dev/install.ps1 | iex
 ```
 
-The installer downloads the latest GitHub Release artifact, installs local runtime dependencies, builds AgeOS, and links `ageos` into `/usr/local/bin`.
+The installer downloads the latest GitHub Release artifact, installs local runtime dependencies, builds AgeOS, and creates the Ubuntu 26.04 sandbox filesystem.
 
 Check it:
 
@@ -93,13 +93,27 @@ AGEOS_SANDBOX_INFERENCE_PORT=8000
 
 Sandboxed agents only get access to the local inference endpoint by default. Use `--allow-network` with `ageos run` or `ageos shell` when an agent setup step needs general outbound network access.
 
-When `--root-dir` is provided, non-system binaries must live inside that root and AgeOS mounts the root as the sandbox workspace. System binaries from `/usr`, `/bin`, `/sbin`, or `/opt/ageos` can still be used with a root directory, which lets `ageos shell --root-dir <dir>` open the host shell inside the workspace sandbox. When `--root-dir` is omitted, non-system binaries are copied into a temporary workspace before the sandbox starts. Inside the sandbox, AgeOS Python prompt/shim calls detect `AGEOS_SANDBOX=1` and use the forwarded inference endpoint instead of loading the native shared library.
+When `--root-dir` is provided, non-system binaries must live inside that root and AgeOS mounts the root as the sandbox workspace. System binaries from `/usr`, `/bin`, `/sbin`, or `/opt/ageos` can still be used with a root directory, which lets `ageos shell --root-dir <dir>` open a shell inside the workspace sandbox. When `--root-dir` is omitted, non-system binaries are copied into a temporary workspace before the sandbox starts. Inside the sandbox, AgeOS Python prompt/shim calls detect `AGEOS_SANDBOX=1` and use the forwarded inference endpoint instead of loading the native shared library.
+
+Installed sandboxes run over an Ubuntu 26.04 root filesystem using a per-agent overlay. The Ubuntu lower filesystem stays unchanged; writes outside the workspace copy up into `.ageos/agents/<agent-id>/overlay/upper` and persist with that agent. Use `--force-new-sandbox` or `--overwrite-sandbox` to discard the persistent home and private overlay for the current workspace.
 
 ## OpenClaw Example
 
+OpenClaw can be installed entirely from inside the sandbox. The persistent agent home keeps `nvm`, npm global packages, and OpenClaw config across runs.
+
 ```bash
-cd examples/openclaw
-ageos run --memory 16G --root-dir openclaw --binary openclaw/node_modules/.bin/openclaw tui
+ageos shell --allow-network --root-dir openclaw
+```
+
+Inside the sandbox shell:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.5/install.sh | bash
+export NVM_DIR="$HOME/.nvm"
+. "$NVM_DIR/nvm.sh"
+nvm install 22.19.0
+npm install -g openclaw@latest
+openclaw onboard --install-daemon
 ```
 
 ## Releases
@@ -146,9 +160,9 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Install dependencies and build ageos 
+Install dependencies and build AgeOS. The build creates the Ubuntu 26.04 rootfs on first install and preserves it on later local rebuilds for a faster development loop.
 
-```base
+```bash
 ./scripts/install-deps.sh
 ./scripts/build.sh
 ```

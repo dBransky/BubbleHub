@@ -8,7 +8,7 @@ The native layer has three main surfaces:
 
 - Scheduler state: records agents, queued model work, resource limits, warm model processes, ports, pids, and refcounts.
 - Inference hosting: accepts JSON chat requests, admits model work, reuses or starts backend processes, forwards chat requests to those backends, and keeps loaded models warm after callers return.
-- Sandbox execution: runs agent binaries with restricted filesystem, user, environment, resource, and network access.
+- Sandbox execution: runs agent binaries with restricted filesystem, user, environment, resource, and network access. Installed sandboxes use an Ubuntu root filesystem plus per-agent overlayfs upper/work directories for private copy-up writes.
 
 Call flow for model hosting:
 
@@ -26,8 +26,10 @@ Sandboxed agents receive an inference-only loopback path to the host AgeOS endpo
 Hardening is enforced by the native sandbox runtime.
 
 - Filesystem exposure must be explicit. A host `--root-dir` is mounted into the sandbox workspace view, not exposed as a host path in `$PWD`.
+- The root filesystem lowerdir must stay read-only. Agent writes outside the workspace must land in the per-agent overlay upperdir.
 - Sandbox `$PWD`, `$HOME`, `$TMPDIR`, `$AGEOS_WORKSPACE`, agent identity, `PATH`, locale, terminal type, and shell prompt must be set by the native sandbox setup.
 - Persistent agent homes must live under controlled `.ageos/agents/agt-*` directories and must not follow symlinks.
+- Agent homes should include standard shell profile files when first created so common installer scripts can persist user setup without host-specific exceptions.
 - Network isolation is default for agents. Sandboxed agents only receive the local inference endpoint when `isolate_network` is enabled, and may receive general outbound network access only when the caller explicitly disables network isolation.
 - Resource limits such as memory and CPU are applied by native sandbox setup.
 - Native code should prefer fail-closed behavior. If setup, mount, user isolation, scheduler state, or inference forwarding cannot be established, return an error instead of silently relaxing restrictions.
@@ -78,6 +80,10 @@ Hardening policy for this file:
 - Keep `/workspace` as the sandbox-facing root-dir mount point.
 - Reject unsafe persistent paths and symlink escapes.
 - Keep inference-only networking separate from explicit general outbound networking.
+
+### `libageos/overfs.c`
+
+Overlay and mount setup for sandbox filesystems. It mounts the Ubuntu rootfs lowerdir with the per-agent overlay upper/work directories, binds the workspace and AgeOS runtime paths, prepares `/dev`, `/proc`, `/tmp`, and other filesystem views, and logs mount decisions for debugging.
 
 ### `libageos/include/ageos/sandbox.h`
 

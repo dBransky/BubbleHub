@@ -10,6 +10,13 @@ from ageos.native import NativeScheduler
 from ageos.node.client import SchedulerClient
 
 
+def _installed_rootfs() -> Path:
+    rootfs = Path(os.environ.get("AGEOS_ROOTFS_DIR", "/opt/ageos/rootfs/ubuntu-26.04"))
+    if not rootfs.is_dir() or not (rootfs / ".ageos-rootfs.json").is_file():
+        pytest.skip("AgeOS Ubuntu rootfs is not installed")
+    return rootfs
+
+
 @pytest.mark.skipif(platform.system() != "Linux", reason="sandbox is Linux-only")
 def test_ageos_sandbox_binary_exists_when_installed() -> None:
     if shutil.which("ageos-sandbox") is None:
@@ -60,6 +67,9 @@ def test_native_sandbox_uses_agent_home_and_non_root_user(tmp_path: Path, monkey
                 'test -w "$HOME" && '
                 'test -w "$TMPDIR" && '
                 'test -w "$HOME/workspace" && '
+                'test -f "$HOME/.bashrc" && '
+                'test -f "$HOME/.profile" && '
+                'printf "\\n# test append\\n" >> "$HOME/.bashrc" && '
                 'mkdir "$HOME/.openclaw" && '
                 'touch "$HOME/.openclaw/openclaw.json"'
             ),
@@ -110,6 +120,64 @@ def test_native_sandbox_preserves_agent_home_between_runs(tmp_path: Path, monkey
     assert second == 0
     persisted = tmp_path / ".ageos" / "agents" / "agt-persist-home" / "home" / "persist.txt"
     assert persisted.read_text(encoding="utf-8") == "first+second"
+
+
+@pytest.mark.skipif(platform.system() != "Linux", reason="sandbox is Linux-only")
+def test_native_sandbox_uses_ubuntu_rootfs_overlay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    rootfs = _installed_rootfs()
+    if os.geteuid() != 0:
+        pytest.skip("rootfs overlay sandbox test requires privileged mount support")
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    upper = workspace / ".ageos" / "agents" / "agt-rootfs" / "overlay" / "upper"
+    work = workspace / ".ageos" / "agents" / "agt-rootfs" / "overlay" / "work"
+    monkeypatch.setenv("AGEOS_AGENT_ID", "agt-rootfs")
+    scheduler = NativeScheduler()
+
+    first = scheduler.run_sandbox(
+        "/bin/sh",
+        [
+            "/bin/sh",
+            "-c",
+            (
+                'grep -q \'VERSION_ID="26.04"\' /etc/os-release && '
+                'test "$AGEOS_ROOTFS_RELEASE" = "ubuntu-26.04" && '
+                'test "$PWD" = "$HOME/workspace" && '
+                'printf "private" > /etc/ageos-overfs-test'
+            ),
+        ],
+        resource_niceness=0,
+        memory_max=2 * 1024 * 1024 * 1024,
+        cpu_percent=0,
+        workdir=str(workspace),
+        root_dir=str(workspace),
+        rootfs_dir=str(rootfs),
+        overlay_upper_dir=str(upper),
+        overlay_work_dir=str(work),
+        isolate_network=False,
+    )
+    if first == 126:
+        shutil.rmtree(workspace, ignore_errors=True)
+        pytest.skip("overlayfs sandbox mount is not permitted in this environment")
+    assert first == 0
+
+    second = scheduler.run_sandbox(
+        "/bin/sh",
+        ["/bin/sh", "-c", 'test "$(cat /etc/ageos-overfs-test)" = "private"'],
+        resource_niceness=0,
+        memory_max=2 * 1024 * 1024 * 1024,
+        cpu_percent=0,
+        workdir=str(workspace),
+        root_dir=str(workspace),
+        rootfs_dir=str(rootfs),
+        overlay_upper_dir=str(upper),
+        overlay_work_dir=str(work),
+        isolate_network=False,
+    )
+
+    assert second == 0
+    assert not (rootfs / "etc" / "ageos-overfs-test").exists()
+    assert (upper / "etc" / "ageos-overfs-test").read_text(encoding="utf-8") == "private"
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="sandbox is Linux-only")
@@ -189,17 +257,16 @@ def test_native_sandbox_blocks_installed_ageos_writes(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="sandbox is Linux-only")
-def test_native_sandbox_allows_pnpm_managed_node_readonly(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    pnpm_home = Path.home() / ".local" / "share" / "pnpm"
-    node = pnpm_home / "bin" / "node"
-    if not node.exists():
-        pytest.skip("pnpm-managed node not available")
-    monkeypatch.setenv("PNPM_HOME", str(pnpm_home))
-    monkeypatch.setenv("PATH", f"{pnpm_home / 'bin'}{os.pathsep}{os.environ.get('PATH', '')}")
+def test_native_sandbox_runs_workspace_managed_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGEOS_AGENT_ID", "agt-workspace-tool")
+    tool = tmp_path / "node_modules" / ".bin" / "workspace-tool"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("#!/bin/sh\nprintf workspace-tool-ok > \"$HOME/workspace-tool.out\"\n", encoding="utf-8")
+    tool.chmod(0o755)
 
     result = NativeScheduler().run_sandbox(
-        "/usr/bin/env",
-        ["/usr/bin/env", "node", "-e", "require('node:crypto').randomBytes(1); console.log(process.version)"],
+        "/bin/sh",
+        ["/bin/sh", "-c", "./node_modules/.bin/workspace-tool"],
         resource_niceness=0,
         memory_max=2 * 1024 * 1024 * 1024,
         cpu_percent=0,
@@ -209,6 +276,8 @@ def test_native_sandbox_allows_pnpm_managed_node_readonly(tmp_path: Path, monkey
     )
 
     assert result == 0
+    output = tmp_path / ".ageos" / "agents" / "agt-workspace-tool" / "home" / "workspace-tool.out"
+    assert output.read_text(encoding="utf-8") == "workspace-tool-ok"
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="sandbox is Linux-only")
