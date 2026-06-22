@@ -194,6 +194,33 @@ docker run --rm --privileged --security-opt seccomp=unconfined \
   ageos-runtime:integration
 ```
 
+### Interactive Docker Development
+
+To explore the integration image interactively instead of running pytest:
+
+```bash
+docker run -it --rm \
+  --privileged \
+  --security-opt seccomp=unconfined \
+  -e AGEOS_CACHE=/cache/ageos \
+  -e AGEOS_MODELS_CONFIG=/cache/ageos/ci-models.yaml \
+  -e AGEOS_INTEGRATION_WORKSPACE_DIR=/cache/ageos/integration-workspaces \
+  -e OPENCLAW_CACHE_DIR=/cache/openclaw \
+  -v ageos-cache-local:/cache/ageos \
+  -v ageos-openclaw-local:/cache/openclaw \
+  ageos-runtime:integration \
+  bash
+```
+
+Inside the container:
+
+```bash
+scripts/ci/write-ci-model-config.sh
+scripts/ci/prepare-openclaw.sh
+mkdir -p /cache/ageos/integration-workspaces/dev-playground
+ageos shell --allow-network --root-dir /cache/ageos/integration-workspaces/dev-playground
+```
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) for details.

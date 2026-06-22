@@ -98,6 +98,8 @@ docker run --rm --privileged --security-opt seccomp=unconfined \
   ageos-runtime:integration
 ```
 
+For an interactive shell in the same image (sandbox exploration, OpenClaw, MCP experiments), see [Interactive Docker Development](README.md#interactive-docker-development) in the README.
+
 Ensure all tests pass before submitting a pull request.
 
 ## Keeping Your Fork Updated
