@@ -582,7 +582,74 @@ static int start_namespace_inference_proxy(int control_fd, uint32_t listen_port)
 
 static int read_sync_byte(int fd);
 
-static int start_namespace_http_proxy(uint32_t listen_port) {
+static int drop_to_host_identity(uid_t host_uid, gid_t host_gid) {
+    if (setresgid(host_gid, host_gid, host_gid) != 0) {
+        return -errno;
+    }
+    if (setresuid(host_uid, host_uid, host_uid) != 0) {
+        return -errno;
+    }
+    return 0;
+}
+
+static void host_http_proxy(int control_fd, const char *agent_id, int access_broker_fd) {
+    for (;;) {
+        int client_fd = recv_fd(control_fd);
+        if (client_fd < 0) {
+            break;
+        }
+        if (access_broker_fd >= 0) {
+            ageos_http_proxy_handle_client_for_agent_broker(client_fd, agent_id, access_broker_fd);
+            close(client_fd);
+            continue;
+        }
+        pid_t pid = fork();
+        if (pid == 0) {
+            close(control_fd);
+            ageos_http_proxy_handle_client_for_agent(client_fd, agent_id);
+            close(client_fd);
+            _exit(0);
+        }
+        close(client_fd);
+        reap_proxy_children();
+    }
+    reap_proxy_children();
+}
+
+static void namespace_http_proxy(int control_fd, uint32_t listen_port, int ready_fd) {
+    prctl(PR_SET_PDEATHSIG, SIGTERM, 0, 0, 0);
+    if (getppid() == 1) {
+        _exit(0);
+    }
+    int listener_fd = create_loopback_listener(listen_port);
+    if (listener_fd < 0) {
+        AGEOS_LOG_ERROR("failed to expose http proxy endpoint", "%s", strerror(-listener_fd));
+        close(ready_fd);
+        _exit(126);
+    }
+    char byte = 1;
+    if (ready_fd >= 0) {
+        (void)write(ready_fd, &byte, 1);
+        close(ready_fd);
+    }
+    for (;;) {
+        int client_fd = accept(listener_fd, NULL, NULL);
+        if (client_fd < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            break;
+        }
+        if (send_fd(control_fd, client_fd) != 0) {
+            close(client_fd);
+            break;
+        }
+        close(client_fd);
+    }
+    close(listener_fd);
+}
+
+static int start_namespace_http_proxy(int control_fd, uint32_t listen_port) {
     int ready[2] = {-1, -1};
     if (socketpair(AF_UNIX, SOCK_STREAM, 0, ready) != 0) {
         return -errno;
@@ -597,13 +664,8 @@ static int start_namespace_http_proxy(uint32_t listen_port) {
     if (pid == 0) {
         close(ready[0]);
         prctl(PR_SET_PDEATHSIG, SIGTERM, 0, 0, 0);
-        if (getppid() == 1) {
-            close(ready[1]);
-            _exit(0);
-        }
-        int rc = ageos_http_proxy_serve(listen_port, ready[1]);
-        close(ready[1]);
-        _exit(rc == 0 ? 0 : 126);
+        namespace_http_proxy(control_fd, listen_port, ready[1]);
+        _exit(0);
     }
     close(ready[1]);
     int sync_rc = read_sync_byte(ready[0]);
@@ -1400,6 +1462,10 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
     gid_t host_gid = getgid();
     uid_t agent_uid = sandbox_agent_uid(host_uid);
     gid_t agent_gid = sandbox_agent_gid(host_gid, agent_uid);
+    const char *config_agent_id = (cfg->agent_id != NULL && cfg->agent_id[0] != '\0') ? cfg->agent_id : getenv("AGEOS_AGENT_ID");
+    if (config_agent_id != NULL && config_agent_id[0] != '\0') {
+        setenv("AGEOS_AGENT_ID", config_agent_id, 1);
+    }
     AGEOS_LOG_DEBUG(
         "resolved sandbox agent identity",
         "host_uid=%u host_gid=%u agent_uid=%u agent_gid=%u",
@@ -1439,6 +1505,8 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
         sandbox_http_proxy_port);
     int inference_control[2] = {-1, -1};
     pid_t host_proxy_pid = -1;
+    int http_control[2] = {-1, -1};
+    pid_t host_http_proxy_pid = -1;
     if (inference_proxy_enabled) {
         if (socketpair(AF_UNIX, SOCK_STREAM, 0, inference_control) != 0) {
             cleanup_sandbox_root(sandbox_root);
@@ -1460,6 +1528,49 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
         }
         close(inference_control[0]);
     }
+    if (http_proxy_enabled) {
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, http_control) != 0) {
+            if (inference_control[1] >= 0) {
+                close(inference_control[1]);
+            }
+            if (host_proxy_pid > 0) {
+                kill(host_proxy_pid, SIGTERM);
+                waitpid(host_proxy_pid, NULL, 0);
+            }
+            cleanup_sandbox_root(sandbox_root);
+            return -errno;
+        }
+        host_http_proxy_pid = fork();
+        if (host_http_proxy_pid < 0) {
+            int err = errno;
+            close(http_control[0]);
+            close(http_control[1]);
+            if (inference_control[1] >= 0) {
+                close(inference_control[1]);
+            }
+            if (host_proxy_pid > 0) {
+                kill(host_proxy_pid, SIGTERM);
+                waitpid(host_proxy_pid, NULL, 0);
+            }
+            cleanup_sandbox_root(sandbox_root);
+            return -err;
+        }
+        if (host_http_proxy_pid == 0) {
+            close(http_control[1]);
+            int drop_rc = drop_to_host_identity(host_uid, host_gid);
+            if (drop_rc != 0) {
+                AGEOS_LOG_ERROR("failed to drop host http proxy privileges", "%s", strerror(-drop_rc));
+                _exit(126);
+            }
+            host_http_proxy(http_control[0], config_agent_id, cfg->access_broker_fd);
+            close(http_control[0]);
+            _exit(0);
+        }
+        close(http_control[0]);
+        if (cfg->access_broker_fd >= 0) {
+            close(cfg->access_broker_fd);
+        }
+    }
     int userns_ready[2] = {-1, -1};
     int userns_continue[2] = {-1, -1};
     if (pipe(userns_ready) != 0 || pipe(userns_continue) != 0) {
@@ -1479,9 +1590,16 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
         if (inference_control[1] >= 0) {
             close(inference_control[1]);
         }
+        if (http_control[1] >= 0) {
+            close(http_control[1]);
+        }
         if (host_proxy_pid > 0) {
             kill(host_proxy_pid, SIGTERM);
             waitpid(host_proxy_pid, NULL, 0);
+        }
+        if (host_http_proxy_pid > 0) {
+            kill(host_http_proxy_pid, SIGTERM);
+            waitpid(host_http_proxy_pid, NULL, 0);
         }
         cleanup_sandbox_root(sandbox_root);
         return -err;
@@ -1496,9 +1614,16 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
         if (inference_control[1] >= 0) {
             close(inference_control[1]);
         }
+        if (http_control[1] >= 0) {
+            close(http_control[1]);
+        }
         if (host_proxy_pid > 0) {
             kill(host_proxy_pid, SIGTERM);
             waitpid(host_proxy_pid, NULL, 0);
+        }
+        if (host_http_proxy_pid > 0) {
+            kill(host_http_proxy_pid, SIGTERM);
+            waitpid(host_http_proxy_pid, NULL, 0);
         }
         cleanup_sandbox_root(sandbox_root);
         return -err;
@@ -1506,6 +1631,9 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
     if (pid == 0) {
         close(userns_ready[0]);
         close(userns_continue[1]);
+        if (http_control[0] >= 0) {
+            close(http_control[0]);
+        }
         const char *existing_path = getenv("PATH");
         char path_buf[4096];
         if (existing_path != NULL && existing_path[0] != '\0') {
@@ -1573,11 +1701,12 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
                 close(inference_control[1]);
             }
             if (http_proxy_enabled) {
-                int proxy_rc = start_namespace_http_proxy(sandbox_http_proxy_port);
+                int proxy_rc = start_namespace_http_proxy(http_control[1], sandbox_http_proxy_port);
                 if (proxy_rc != 0) {
-                    AGEOS_LOG_ERROR("failed to start http deny proxy", "%s", strerror(-proxy_rc));
+                    AGEOS_LOG_ERROR("failed to start http policy proxy", "%s", strerror(-proxy_rc));
                     _exit(126);
                 }
+                close(http_control[1]);
                 apply_sandbox_http_proxy_env(sandbox_http_proxy_port);
             }
             if (getenv("AGEOS_NETWORK") == NULL) {
@@ -1678,15 +1807,25 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
         if (inference_control[1] >= 0) {
             close(inference_control[1]);
         }
+        if (http_control[1] >= 0) {
+            close(http_control[1]);
+        }
         if (host_proxy_pid > 0) {
             kill(host_proxy_pid, SIGTERM);
             waitpid(host_proxy_pid, NULL, 0);
+        }
+        if (host_http_proxy_pid > 0) {
+            kill(host_http_proxy_pid, SIGTERM);
+            waitpid(host_http_proxy_pid, NULL, 0);
         }
         cleanup_sandbox_root(sandbox_root);
         return 126;
     }
     if (inference_control[1] >= 0) {
         close(inference_control[1]);
+    }
+    if (http_control[1] >= 0) {
+        close(http_control[1]);
     }
     int status = 0;
     if (waitpid(pid, &status, 0) < 0) {
@@ -1695,12 +1834,20 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
             kill(host_proxy_pid, SIGTERM);
             waitpid(host_proxy_pid, NULL, 0);
         }
+        if (host_http_proxy_pid > 0) {
+            kill(host_http_proxy_pid, SIGTERM);
+            waitpid(host_http_proxy_pid, NULL, 0);
+        }
         cleanup_sandbox_root(sandbox_root);
         return -err;
     }
     if (host_proxy_pid > 0) {
         kill(host_proxy_pid, SIGTERM);
         waitpid(host_proxy_pid, NULL, 0);
+    }
+    if (host_http_proxy_pid > 0) {
+        kill(host_http_proxy_pid, SIGTERM);
+        waitpid(host_http_proxy_pid, NULL, 0);
     }
     cleanup_sandbox_root(sandbox_root);
     if (WIFEXITED(status)) {

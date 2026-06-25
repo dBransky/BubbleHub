@@ -48,8 +48,10 @@ Use this skill when the user wants the latest work prepared for a pull request. 
    - Mark applicable **Type of Change** checkboxes with `[x]`; leave others as `[ ]`.
    - Mark **Testing** and **Documentation** checkboxes to reflect what was actually done.
    - Use **Test Details** for commands run, test files added, and manual verification steps.
-   - Use **Additional Notes** for reviewer context, follow-ups, migration notes, or residual risk.
+   - Use **Additional Notes** only for PR-relevant reviewer context, follow-ups, migration notes, or residual risk. This section is for the pull request, not for agent meta-commentary. Usually keep it empty or omit it unless the note would help a reviewer understand the PR itself.
    - Omit **Screenshots** entirely when not applicable; do not leave an empty optional section with only placeholder text.
+   - If the final response references a PR body file such as `/tmp/ageos-pr-body.md`, create that file during this workflow before finishing. Do not tell the user to run `gh pr create --body-file /tmp/...` unless the referenced file already exists.
+   - Prefer giving the user a single copy-pasteable heredoc command that creates the PR body file first, followed by the exact `gh pr create` or `gh pr edit` command using that file.
 
 7. Stop before committing:
    - Do not run `git add`, `git commit`, `git push`, or `gh pr create` unless the user separately and explicitly asks for those actions.
@@ -62,9 +64,9 @@ Use this skill when the user wants the latest work prepared for a pull request. 
    - Include the filled PR body (or a clear draft) in the final summary so the user can review it before opening the PR.
    - Mention that no commit or push was performed.
    - If there is an existing PR, include its URL and note whether the body should be updated to match the template.
-   - End with a **Next steps** section containing copy-pasteable commands.
+   - End with a **Next steps** section containing copy-pasteable commands. These commands must be complete and self-contained: if they reference `/tmp/ageos-pr-body.md` or another generated file, include the heredoc that creates that file before any command that consumes it.
 
-Use this command sequence and replace placeholders with the actual files, branch, title, and filled template body. Prefer writing the body to a temporary Markdown file and passing it with `--body-file`; this keeps the final command readable and avoids nested quoting in long PR templates:
+Use this command sequence and replace placeholders with the actual files, branch, title, and filled template body. Prefer writing the body to a temporary Markdown file and passing it with `--body-file`; this keeps the final command readable and avoids nested quoting in long PR templates. If you choose this form, either actually create the file before finishing or include this heredoc in the user's next-step commands before any command that uses `--body-file`:
 
 ```bash
 cat > /tmp/ageos-pr-body.md <<'EOF'

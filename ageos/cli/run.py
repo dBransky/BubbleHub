@@ -4,11 +4,16 @@ import os
 import platform
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import termios
+import tty
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping, TextIO
 from urllib.parse import urlparse
 
 import typer
@@ -77,6 +82,7 @@ def command(
         force_new_sandbox=force_new_sandbox,
         unsafe_no_sandbox=unsafe_no_sandbox,
         allow_network=allow_network,
+        interactive_access=_can_prompt_for_access(),
     )
 
 
@@ -93,6 +99,7 @@ def run_agent(
     unsafe_no_sandbox: bool = False,
     force_new_sandbox: bool = False,
     allow_network: bool = False,
+    interactive_access: bool = False,
 ) -> None:
     """Run a binary as an AgeOS agent inside the hardened sandbox."""
 
@@ -130,10 +137,16 @@ def run_agent(
     env = dict()
     env["AGEOS_AGENT_ID"] = agent_id
     env["AGEOS_NICENESS"] = str(niceness)
+    env["AGEOS_HOST_UID"] = str(os.getuid())
+    env["AGEOS_HOST_GID"] = str(os.getgid())
     # we want to see logs for the sandbox invocation, we will remove these later for the agent
     env["AGEOS_LOG_FILE"] = os.environ.get("AGEOS_LOG_FILE", "")
     env["AGEOS_LOG_LEVEL"] = os.environ.get("AGEOS_LOG_LEVEL", "")
     env["AGEOS_ENABLE_SECCOMP"] = os.environ.get("AGEOS_ENABLE_SECCOMP", "")
+    for state_key in ("AGEOS_STATE_DIR", "XDG_STATE_HOME", "HOME", "AGEOS_SANDBOX_HELPER", "LD_LIBRARY_PATH"):
+        if os.environ.get(state_key):
+            env[state_key] = os.environ[state_key]
+    _prepare_access_manifest_dir(agent_id, env)
     ageos_pythonpath = _ageos_site_packages()
     if ageos_pythonpath is not None:
         env["AGEOS_PYTHONPATH"] = str(ageos_pythonpath)
@@ -179,6 +192,7 @@ def run_agent(
             inference_port=inference.host_port,
             sandbox_inference_port=inference.sandbox_port,
             sandbox_http_proxy_port=sandbox_http_proxy_port,
+            access_broker=_make_interactive_access_broker(client.native, agent_id) if interactive_access and sandbox_http_proxy_port > 0 else None,
         )
         log_debug("sandbox exited", f"agent_id={agent_id} exit_code={exit_code}")
         raise typer.Exit(exit_code)
@@ -211,6 +225,7 @@ def _select_persistent_sandbox(root_dir: str | None, *, force_new: bool) -> Pers
         return PersistentSandbox(agent_id=None)
     if force_new:
         _remove_persistent_agent(root, agent_id)
+        _remove_access_manifest_state(agent_id, os.environ)
         return PersistentSandbox(agent_id=None)
     return PersistentSandbox(agent_id=agent_id, reused=True)
 
@@ -250,7 +265,21 @@ def _remove_persistent_agent(root: Path, agent_id: str) -> None:
     resolved_agent = agent_dir.resolve()
     if resolved_agent.parent != resolved_agents:
         raise typer.BadParameter("persistent sandbox path escaped .ageos/agents")
-    shutil.rmtree(resolved_agent)
+    try:
+        shutil.rmtree(resolved_agent)
+    except PermissionError:
+        tombstone = _tombstone_agent_path(resolved_agents, agent_id)
+        resolved_agent.rename(tombstone)
+        shutil.rmtree(tombstone, ignore_errors=True)
+
+
+def _tombstone_agent_path(agents_dir: Path, agent_id: str) -> Path:
+    for index in range(1000):
+        suffix = "" if index == 0 else f"-{index}"
+        candidate = agents_dir / f".removed-{agent_id}{suffix}"
+        if not candidate.exists():
+            return candidate
+    raise typer.BadParameter("could not choose a tombstone path for persistent sandbox cleanup")
 
 
 def _is_persistent_agent_dir(path: Path) -> bool:
@@ -403,6 +432,7 @@ def _run_native_sandbox(
     inference_port: int = 0,
     sandbox_inference_port: int = 0,
     sandbox_http_proxy_port: int = 0,
+    access_broker=None,
 ) -> int:
     if not target_args:
         raise typer.BadParameter("missing sandbox command")
@@ -426,10 +456,168 @@ def _run_native_sandbox(
             inference_port=inference_port,
             sandbox_inference_port=sandbox_inference_port,
             sandbox_http_proxy_port=sandbox_http_proxy_port,
+            access_broker=access_broker,
         )
     finally:
         os.environ.clear()
         os.environ.update(original_env)
+
+
+_ACCESS_POLICY_OPTIONS = (
+    ("always", "always"),
+    ("never", "never"),
+    ("ask", "ask every time (approve now)"),
+)
+
+
+def _make_interactive_access_broker(native, agent_id: str):
+    def broker(request: dict[str, object]) -> str:
+        with _host_terminal_foreground():
+            policy = _choose_access_policy(request)
+            try:
+                native.apply_access_policy(
+                    agent_id,
+                    kind=str(request.get("kind", "")),
+                    subject=str(request.get("subject", "")),
+                    method=str(request.get("method", "")),
+                    path=str(request.get("path", "")),
+                    policy=policy,
+                )
+            except Exception as exc:
+                typer.echo(f"Warning: failed to persist access policy: {exc}", err=True)
+        return policy
+
+    return broker
+
+
+def _can_prompt_for_access() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _prepare_access_manifest_dir(agent_id: str, env: dict[str, str]) -> None:
+    state_root = _access_state_root(env)
+    manifest_dir = state_root / "sandboxes" / agent_id
+    manifest_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+
+
+def _remove_access_manifest_state(agent_id: str, env: Mapping[str, str]) -> None:
+    if not _is_valid_agent_id(agent_id):
+        raise typer.BadParameter("invalid agent id for access manifest cleanup")
+    sandboxes_dir = _access_state_root(env) / "sandboxes"
+    manifest_dir = sandboxes_dir / agent_id
+    if not manifest_dir.exists() and not manifest_dir.is_symlink():
+        return
+    resolved_sandboxes = sandboxes_dir.resolve()
+    resolved_manifest = manifest_dir.resolve()
+    if manifest_dir.is_symlink() or resolved_manifest.parent != resolved_sandboxes:
+        raise typer.BadParameter("access manifest path escaped sandboxes state directory")
+    shutil.rmtree(manifest_dir)
+
+
+def _access_state_root(env: Mapping[str, str]) -> Path:
+    if env.get("AGEOS_STATE_DIR"):
+        return Path(env["AGEOS_STATE_DIR"]).expanduser()
+    if env.get("XDG_STATE_HOME"):
+        return Path(env["XDG_STATE_HOME"]).expanduser() / "ageos"
+    if env.get("HOME"):
+        return Path(env["HOME"]).expanduser() / ".local" / "state" / "ageos"
+    return Path(f"/tmp/ageos-{os.getuid()}") / "state"
+
+
+@contextmanager
+def _host_terminal_foreground():
+    fileno = _stream_fileno(sys.stdin)
+    if fileno is None or not sys.stdin.isatty():
+        yield
+        return
+    host_pgrp = os.getpgrp()
+    try:
+        previous_pgrp = os.tcgetpgrp(fileno)
+    except OSError:
+        yield
+        return
+    if previous_pgrp == host_pgrp:
+        yield
+        return
+
+    old_ttou = signal.signal(signal.SIGTTOU, signal.SIG_IGN)
+    try:
+        os.tcsetpgrp(fileno, host_pgrp)
+        yield
+    finally:
+        try:
+            os.tcsetpgrp(fileno, previous_pgrp)
+        except OSError:
+            pass
+        signal.signal(signal.SIGTTOU, old_ttou)
+
+
+def _choose_access_policy(
+    request: dict[str, object],
+    *,
+    input_stream: TextIO = sys.stdin,
+    output_stream: TextIO = sys.stdout,
+) -> str:
+    output_stream.write(
+        "\nAgeOS sandbox paused for host access decision:\n"
+        f"subject={request.get('subject', '')} method={request.get('method', '*') or '*'} path={request.get('path', '*') or '*'}\n"
+        "Use Up/Down arrows and press Enter.\n"
+    )
+    output_stream.flush()
+    selected = 0
+
+    def choose() -> str:
+        nonlocal selected
+        rendered = False
+        while True:
+            _render_access_policy_options(selected, output_stream, rewind=rendered)
+            rendered = True
+            key = _read_access_policy_key(input_stream)
+            if key in {"\n", "\r", ""}:
+                output_stream.write("\n")
+                output_stream.flush()
+                return _ACCESS_POLICY_OPTIONS[selected][0]
+            if key in {"\x1b[A", "k"}:
+                selected = (selected - 1) % len(_ACCESS_POLICY_OPTIONS)
+            elif key in {"\x1b[B", "j"}:
+                selected = (selected + 1) % len(_ACCESS_POLICY_OPTIONS)
+
+    fileno = _stream_fileno(input_stream)
+    if fileno is None or not input_stream.isatty():
+        return choose()
+    original = termios.tcgetattr(fileno)
+    try:
+        tty.setcbreak(fileno)
+        return choose()
+    finally:
+        termios.tcsetattr(fileno, termios.TCSADRAIN, original)
+
+
+def _render_access_policy_options(selected: int, output_stream: TextIO, *, rewind: bool) -> None:
+    if rewind:
+        output_stream.write(f"\x1b[{len(_ACCESS_POLICY_OPTIONS)}F")
+    for index, (_policy, label) in enumerate(_ACCESS_POLICY_OPTIONS):
+        marker = ">" if index == selected else " "
+        line = f"{marker} {label}"
+        if index == selected:
+            line = f"\x1b[32m{line}\x1b[0m"
+        output_stream.write(f"\x1b[2K\r{line}\n")
+    output_stream.flush()
+
+
+def _read_access_policy_key(input_stream: TextIO) -> str:
+    key = input_stream.read(1)
+    if key == "\x1b":
+        suffix = input_stream.read(2)
+        return key + suffix
+    return key
+
+
+def _stream_fileno(stream: TextIO) -> int | None:
+    try:
+        return stream.fileno()
+    except (AttributeError, OSError):
+        return None
 
 
 def _parse_bytes(value: str) -> int:

@@ -3,10 +3,13 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import select
 import shutil
+import socket
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 
 @dataclass(frozen=True)
@@ -48,11 +51,22 @@ class SandboxConfig(ctypes.Structure):
         ("rootfs_dir", ctypes.c_char_p),
         ("overlay_upper_dir", ctypes.c_char_p),
         ("overlay_work_dir", ctypes.c_char_p),
+        ("agent_id", ctypes.c_char_p),
         ("isolate_network", ctypes.c_int),
         ("inference_host", ctypes.c_char_p),
         ("inference_port", ctypes.c_uint32),
         ("sandbox_inference_port", ctypes.c_uint32),
         ("sandbox_http_proxy_port", ctypes.c_uint32),
+        ("access_broker_fd", ctypes.c_int),
+    ]
+
+
+class AccessRequest(ctypes.Structure):
+    _fields_ = [
+        ("kind", ctypes.c_char * 32),
+        ("subject", ctypes.c_char * 256),
+        ("method", ctypes.c_char * 64),
+        ("path", ctypes.c_char * 512),
     ]
 
 
@@ -120,6 +134,47 @@ def _bytes(value: str | None) -> bytes | None:
     if value is None:
         return None
     return value.encode("utf-8")
+
+
+AccessBroker = Callable[[dict[str, object]], str]
+
+
+def _run_with_access_broker(command: list[str], access_broker: AccessBroker) -> int:
+    parent, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        separator = command.index("--")
+        command = [*command[:separator], "--access-broker-fd", str(child.fileno()), *command[separator:]]
+        process = subprocess.Popen(command, pass_fds=(child.fileno(),))
+        child.close()
+        child_buffer = ""
+        while True:
+            if process.poll() is not None:
+                return int(process.returncode)
+            readable, _, _ = select.select([parent], [], [], 0.1)
+            if not readable:
+                continue
+            chunk = parent.recv(4096)
+            if not chunk:
+                continue
+            child_buffer += chunk.decode("utf-8")
+            while "\n" in child_buffer:
+                raw, child_buffer = child_buffer.split("\n", 1)
+                if not raw:
+                    continue
+                try:
+                    request = json.loads(raw)
+                    if not isinstance(request, dict):
+                        raise ValueError("broker request was not an object")
+                    response = access_broker(request)
+                except Exception:
+                    response = "never"
+                if response not in {"always", "never", "ask"}:
+                    response = "never"
+                wire_response = {"always": "approve", "never": "deny", "ask": "ask"}[response]
+                parent.sendall(f"{wire_response}\n".encode("utf-8"))
+    finally:
+        parent.close()
+        child.close()
 
 
 def detect_hardware() -> HardwareInfo:
@@ -544,6 +599,56 @@ class NativeScheduler:
         finally:
             self.lib.ageos_scheduler_free_string(pointer)  # type: ignore[union-attr]
 
+    def access_pending(self) -> list[dict[str, object]]:
+        pointer = self.lib.ageos_access_pending_json()  # type: ignore[union-attr]
+        if not pointer:
+            raise LibAgeosError("native access policy failed to list pending requests")
+        try:
+            raw = ctypes.string_at(pointer).decode("utf-8")
+            data = json.loads(raw)
+            if not isinstance(data, list):
+                raise LibAgeosError("native access policy returned a non-list pending response")
+            return [item for item in data if isinstance(item, dict)]
+        finally:
+            self.lib.ageos_access_free_string(pointer)  # type: ignore[union-attr]
+
+    def access_manifest(self, agent_id: str) -> dict[str, object]:
+        pointer = self.lib.ageos_access_manifest_json(_bytes(agent_id))  # type: ignore[union-attr]
+        if not pointer:
+            raise LibAgeosError("native access policy failed to read manifest")
+        try:
+            raw = ctypes.string_at(pointer).decode("utf-8")
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                raise LibAgeosError("native access policy returned a non-object manifest")
+            return data
+        finally:
+            self.lib.ageos_access_free_string(pointer)  # type: ignore[union-attr]
+
+    def apply_access_policy(
+        self,
+        agent_id: str,
+        *,
+        kind: str,
+        subject: str,
+        method: str,
+        path: str,
+        policy: str,
+    ) -> None:
+        request = AccessRequest(
+            kind=(kind or "").encode("utf-8"),
+            subject=(subject or "").encode("utf-8"),
+            method=(method or "").encode("utf-8"),
+            path=(path or "").encode("utf-8"),
+        )
+        result = self.lib.ageos_access_apply_policy(  # type: ignore[union-attr]
+            _bytes(agent_id),
+            ctypes.byref(request),
+            _bytes(policy),
+        )
+        if int(result) != 0:
+            raise LibAgeosError("native access policy failed to apply policy")
+
     def run_sandbox(
         self,
         binary: str,
@@ -563,6 +668,7 @@ class NativeScheduler:
         sandbox_inference_port: int = 0,
         sandbox_http_proxy_port: int = 0,
         disable_http_proxy: bool = False,
+        access_broker: AccessBroker | None = None,
     ) -> int:
         command = [
             _sandbox_helper(),
@@ -597,6 +703,8 @@ class NativeScheduler:
             command.append("--no-http-proxy")
         command.append("--")
         command.extend(argv if argv else [binary])
+        if access_broker is not None:
+            return _run_with_access_broker(command, access_broker)
         return subprocess.call(command)
 
     def run_sandbox_in_process(
@@ -634,11 +742,13 @@ class NativeScheduler:
             rootfs_dir=_bytes(rootfs_dir),
             overlay_upper_dir=_bytes(overlay_upper_dir),
             overlay_work_dir=_bytes(overlay_work_dir),
+            agent_id=_bytes(os.environ.get("AGEOS_AGENT_ID")),
             isolate_network=1 if isolate_network else 0,
             inference_host=_bytes(inference_host),
             inference_port=int(inference_port),
             sandbox_inference_port=int(sandbox_inference_port),
             sandbox_http_proxy_port=int(sandbox_http_proxy_port),
+            access_broker_fd=-1,
         )
         from ageos.log import log_debug
 
@@ -708,6 +818,18 @@ class NativeScheduler:
             self.lib.ageos_scheduler_free_string.restype = None
             self.lib.ageos_inference_chat_json.argtypes = [ctypes.c_char_p]
             self.lib.ageos_inference_chat_json.restype = ctypes.c_void_p
+            self.lib.ageos_access_pending_json.argtypes = []
+            self.lib.ageos_access_pending_json.restype = ctypes.c_void_p
+            self.lib.ageos_access_manifest_json.argtypes = [ctypes.c_char_p]
+            self.lib.ageos_access_manifest_json.restype = ctypes.c_void_p
+            self.lib.ageos_access_free_string.argtypes = [ctypes.c_void_p]
+            self.lib.ageos_access_free_string.restype = None
+            self.lib.ageos_access_apply_policy.argtypes = [
+                ctypes.c_char_p,
+                ctypes.POINTER(AccessRequest),
+                ctypes.c_char_p,
+            ]
+            self.lib.ageos_access_apply_policy.restype = ctypes.c_int
             self.lib.ageos_sandbox_run.argtypes = [ctypes.POINTER(SandboxConfig)]
             self.lib.ageos_sandbox_run.restype = ctypes.c_int
         except AttributeError as exc:

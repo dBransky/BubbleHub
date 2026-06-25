@@ -53,6 +53,7 @@ def command(
         root_dir=root_dir,
         force_new_sandbox=force_new_sandbox,
         allow_network=allow_network,
+        interactive_access=True,
     )
 
 

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import platform
 import shutil
+from collections.abc import Iterator
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
+from urllib.parse import urlparse
 
 import pytest
 
@@ -12,6 +17,29 @@ HTTP_PROXY_PORT = 18080
 
 
 pytestmark = pytest.mark.skipif(platform.system() != "Linux", reason="sandbox network tests are Linux-only")
+
+
+class _QuietHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"manifest impersonation should not reach host")
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
+
+
+@contextmanager
+def _host_http_server() -> Iterator[str]:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _QuietHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    try:
+        yield f"http://127.0.0.1:{port}/manifest-impersonation"
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def _run_shell(
@@ -108,6 +136,44 @@ def test_http_proxy_denies_curl_request(tmp_path: Path) -> None:
             "grep -q 'AgeOS proxy denied the request' \"$TMPDIR/proxy-body\""
         ),
     )
+
+    assert result == 0
+
+
+def test_sandbox_cannot_impersonate_another_agent_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if shutil.which("curl") is None:
+        pytest.skip("curl is not installed")
+    real_agent_id = "agt-real-manifest"
+    victim_agent_id = "agt-victim-manifest"
+    monkeypatch.delenv("AGEOS_STATE_DIR", raising=False)
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
+    monkeypatch.setenv("HOME", str(tmp_path / "host-home"))
+
+    with _host_http_server() as target_url:
+        parsed = urlparse(target_url)
+        NativeScheduler().apply_access_policy(
+            victim_agent_id,
+            kind="http",
+            subject=parsed.hostname or "",
+            method="GET",
+            path=parsed.path or "/",
+            policy="always",
+        )
+        monkeypatch.setenv("AGEOS_AGENT_ID", real_agent_id)
+        result = _run_shell_with_proxy(
+            tmp_path,
+            (
+                "set -eu; "
+                f"export AGEOS_AGENT_ID={victim_agent_id}; "
+                "status=$(curl --noproxy '' -sS -o \"$TMPDIR/proxy-body\" -w '%{http_code}' "
+                f"--max-time 5 {target_url}); "
+                'test "$status" = 403; '
+                "grep -q 'AgeOS proxy denied the request' \"$TMPDIR/proxy-body\""
+            ),
+        )
 
     assert result == 0
 

@@ -13,11 +13,13 @@ typedef struct {
     const char *rootfs_dir;
     const char *overlay_upper_dir;
     const char *overlay_work_dir;
+    const char *agent_id;
     int isolate_network;
     const char *inference_host;
     uint32_t inference_port;
     uint32_t sandbox_inference_port;
     uint32_t sandbox_http_proxy_port;
+    int access_broker_fd;
 } ageos_sandbox_config;
 
 int ageos_sandbox_run(const ageos_sandbox_config *cfg);

@@ -35,11 +35,13 @@ int main(int argc, char **argv) {
         .rootfs_dir = NULL,
         .overlay_upper_dir = NULL,
         .overlay_work_dir = NULL,
+        .agent_id = NULL,
         .isolate_network = 0,
         .inference_host = NULL,
         .inference_port = 0,
         .sandbox_inference_port = 0,
         .sandbox_http_proxy_port = 0,
+        .access_broker_fd = -1,
     };
 
     int i = 1;
@@ -64,6 +66,8 @@ int main(int argc, char **argv) {
             cfg.overlay_upper_dir = argv[++i];
         } else if (strcmp(argv[i], "--overlay-work-dir") == 0 && i + 1 < argc) {
             cfg.overlay_work_dir = argv[++i];
+        } else if (strcmp(argv[i], "--agent-id") == 0 && i + 1 < argc) {
+            cfg.agent_id = argv[++i];
         } else if (strcmp(argv[i], "--isolate-network") == 0) {
             cfg.isolate_network = 1;
         } else if (strcmp(argv[i], "--inference-host") == 0 && i + 1 < argc) {
@@ -74,6 +78,8 @@ int main(int argc, char **argv) {
             cfg.sandbox_inference_port = (uint32_t)strtoul(argv[++i], NULL, 10);
         } else if (strcmp(argv[i], "--sandbox-http-proxy-port") == 0 && i + 1 < argc) {
             cfg.sandbox_http_proxy_port = (uint32_t)strtoul(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "--access-broker-fd") == 0 && i + 1 < argc) {
+            cfg.access_broker_fd = (int)strtol(argv[++i], NULL, 10);
         } else if (strcmp(argv[i], "--no-http-proxy") == 0) {
             cfg.sandbox_http_proxy_port = UINT32_MAX;
         } else if (strcmp(argv[i], "--log-level") == 0 && i + 1 < argc) {
@@ -87,7 +93,7 @@ int main(int argc, char **argv) {
         AGEOS_LOG_ERROR("missing sandbox command", "");
         AGEOS_LOG_INFO(
             "ageos-sandbox usage",
-            "[--memory 2G] [--cpu 50] [--niceness N] [--workdir DIR] [--root-dir DIR] [--rootfs-dir DIR] [--overlay-upper-dir DIR] [--overlay-work-dir DIR] [--isolate-network] [--inference-host HOST] [--inference-port PORT] [--sandbox-inference-port PORT] [--sandbox-http-proxy-port PORT] [--no-http-proxy] [--log-level LEVEL] -- COMMAND [ARGS...]");
+            "[--memory 2G] [--cpu 50] [--niceness N] [--workdir DIR] [--root-dir DIR] [--rootfs-dir DIR] [--overlay-upper-dir DIR] [--overlay-work-dir DIR] [--agent-id AGENT] [--isolate-network] [--inference-host HOST] [--inference-port PORT] [--sandbox-inference-port PORT] [--sandbox-http-proxy-port PORT] [--access-broker-fd FD] [--no-http-proxy] [--log-level LEVEL] -- COMMAND [ARGS...]");
         return 2;
     }
     cfg.binary = argv[i];

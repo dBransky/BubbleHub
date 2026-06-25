@@ -23,6 +23,7 @@ Python should express policy and validate user input before calling native code,
 
 - CLI code may reject unsafe obvious input, such as protected `--root-dir` locations.
 - Persistent sandbox metadata may be selected in Python, but path safety must be conservative: no symlink agent homes, no path escapes, and no source-tree roots unless explicitly allowed.
+- Persistent sandbox access manifests are native-owned. Python may display pending access requests and submit a selected policy through `ageos/native.py`, but it must not parse, validate, or write manifest JSON directly.
 - Python must pass sandbox configuration to `ageos_sandbox_run()` instead of emulating isolation.
 - `--unsafe-no-sandbox` is only a development escape hatch and must not be used as a production hardening path.
 - Sandboxed inference environment variables are the only supported route for Python prompt/shim inference inside the sandbox; the native sandbox still controls network access.

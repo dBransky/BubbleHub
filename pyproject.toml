@@ -47,6 +47,8 @@ ageos = ["config/*.yaml"]
 [tool.setuptools.data-files]
 "share/ageos/libageos" = [
   "libageos/ageos_sandbox_main.c",
+  "libageos/access_policy.c",
+  "libageos/access_policy_test.c",
   "libageos/hw_detect.c",
   "libageos/http_proxy.c",
   "libageos/http_proxy_test.c",
@@ -59,6 +61,7 @@ ageos = ["config/*.yaml"]
   "libageos/sandbox.c",
 ]
 "share/ageos/libageos/include/ageos" = [
+  "libageos/include/ageos/access_policy.h",
   "libageos/include/ageos/hw.h",
   "libageos/include/ageos/http_proxy.h",
   "libageos/include/ageos/limits.h",

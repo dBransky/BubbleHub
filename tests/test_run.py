@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 import typer
 
-from ageos.cli.run import _resolve_rootfs_dir, _resolve_sandbox_paths, run_agent
+from ageos.cli.run import _can_prompt_for_access, _resolve_rootfs_dir, _resolve_sandbox_paths, run_agent
 
 
 def test_run_agent_uses_native_inference_only_network(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -54,6 +54,19 @@ def test_run_agent_uses_native_inference_only_network(monkeypatch: pytest.Monkey
     assert captured_env["https_proxy"] == "http://127.0.0.1:18080"
     assert "127.0.0.1" in captured_env["NO_PROXY"].split(",")
     assert "localhost" in captured_env["NO_PROXY"].split(",")
+
+
+def test_run_access_prompt_requires_interactive_stdin_and_stdout() -> None:
+    stdin = Mock()
+    stdout = Mock()
+    stdin.isatty.return_value = True
+    stdout.isatty.return_value = True
+    with patch("ageos.cli.run.sys.stdin", stdin), patch("ageos.cli.run.sys.stdout", stdout):
+        assert _can_prompt_for_access()
+
+    stdout.isatty.return_value = False
+    with patch("ageos.cli.run.sys.stdin", stdin), patch("ageos.cli.run.sys.stdout", stdout):
+        assert not _can_prompt_for_access()
 
 
 def test_run_agent_allow_network_disables_isolation() -> None:

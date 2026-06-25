@@ -11,6 +11,7 @@ from rich.table import Table
 
 from ageos import __version__
 from ageos.cli import dashboard as dashboard_cmd
+from ageos.cli import manifest as manifest_cmd
 from ageos.cli import poc as poc_cmd
 from ageos.cli import prompt as prompt_cmd
 from ageos.cli import ps as ps_cmd
@@ -57,6 +58,7 @@ app.command("poc")(poc_cmd.command)
 app.command("prompt")(prompt_cmd.command)
 app.command("run", context_settings=RUN_CONTEXT)(run_cmd.command)
 app.command("shell", context_settings=RUN_CONTEXT)(shell_cmd.command)
+app.command("manifest")(manifest_cmd.command)
 app.command("serve")(serve_cmd.command)
 app.command("ps")(ps_cmd.command)
 app.command("queue")(queue_cmd.command)

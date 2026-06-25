@@ -1,0 +1,85 @@
+from __future__ import annotations
+
+from unittest.mock import Mock, patch
+
+from rich.console import Console
+
+from ageos.tui.dashboard import _manifest_scope_for_pending, _pending_access_label, _resolve_pending_access
+
+
+def test_pending_access_label_includes_agent_method_and_target() -> None:
+    assert (
+        _pending_access_label(
+            {
+                "agent_id": "agt-test",
+                "kind": "http",
+                "subject": "api.example.com",
+                "method": "POST",
+                "path": "/rpc",
+            }
+        )
+        == "agt-test: http POST api.example.com/rpc"
+    )
+
+
+def test_resolve_pending_access_submits_choice_to_native_policy() -> None:
+    native = Mock()
+    native.access_pending.return_value = [
+        {
+            "agent_id": "agt-test",
+            "kind": "http",
+            "subject": "api.example.com",
+            "method": "POST",
+            "path": "/rpc",
+        }
+    ]
+    client = Mock(native=native)
+
+    with (
+        patch("ageos.tui.dashboard.SchedulerClient.local", return_value=client),
+        patch("ageos.tui.dashboard.Prompt.ask", return_value="always") as ask,
+    ):
+        _resolve_pending_access(Console(record=True))
+
+    assert ask.call_args.kwargs["choices"] == ["always", "never", "ask"]
+    native.apply_access_policy.assert_called_once_with(
+        "agt-test",
+        kind="http",
+        subject="api.example.com",
+        method="*",
+        path="*",
+        policy="always",
+    )
+
+
+def test_resolve_pending_access_ask_submits_manifest_policy() -> None:
+    native = Mock()
+    native.access_pending.return_value = [
+        {
+            "agent_id": "agt-test",
+            "kind": "http",
+            "subject": "api.example.com",
+            "method": "GET",
+            "path": "/",
+        }
+    ]
+    client = Mock(native=native)
+
+    with (
+        patch("ageos.tui.dashboard.SchedulerClient.local", return_value=client),
+        patch("ageos.tui.dashboard.Prompt.ask", return_value="ask"),
+    ):
+        _resolve_pending_access(Console(record=True))
+
+    native.apply_access_policy.assert_called_once_with(
+        "agt-test",
+        kind="http",
+        subject="api.example.com",
+        method="*",
+        path="*",
+        policy="ask",
+    )
+
+
+def test_manifest_scope_for_non_http_pending_keeps_exact_request() -> None:
+    assert _manifest_scope_for_pending({"kind": "mcp", "method": "tool", "path": "search"}) == ("tool", "search")

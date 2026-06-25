@@ -11,8 +11,11 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
+from urllib.parse import urlparse
 
 import pytest
+
+from ageos.native import NativeScheduler
 
 pytestmark = pytest.mark.integration
 
@@ -34,6 +37,7 @@ def _integration_env(tmp_path: Path) -> dict[str, str]:
         str(Path(env["AGEOS_CACHE"]) / "integration-workspaces"),
     )
     env.setdefault("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    env.setdefault("AGEOS_STATE_DIR", str(tmp_path / "state"))
     env.setdefault("AGEOS_LLAMA_CTX_SIZE", "512")
     env.setdefault("AGEOS_MAX_OUTPUT_TOKENS", "32")
     env.setdefault("NO_PROXY", "127.0.0.1,localhost")
@@ -219,6 +223,24 @@ def _proxy_env(env: dict[str, str]) -> dict[str, str]:
     proxy_env = env.copy()
     proxy_env["AGEOS_LOG_LEVEL"] = "info"
     return proxy_env
+
+
+def _apply_access_policy_for_url(env: dict[str, str], agent_id: str, url: str, *, method: str, policy: str) -> None:
+    parsed = urlparse(url)
+    old_env = os.environ.copy()
+    try:
+        os.environ.update(env)
+        NativeScheduler().apply_access_policy(
+            agent_id,
+            kind="http",
+            subject=parsed.hostname or "",
+            method=method,
+            path=parsed.path or "/",
+            policy=policy,
+        )
+    finally:
+        os.environ.clear()
+        os.environ.update(old_env)
 
 
 def _assert_proxy_denied_output(output: str, method: str, url: str) -> None:
@@ -636,6 +658,35 @@ def test_mcp_agent_http_host_mcp_is_denied_by_proxy(
     _assert_proxy_denied_output(result.stdout, "POST", target_url)
 
 
+def test_mcp_agent_http_host_mcp_uses_persisted_access_approval(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+) -> None:
+    with _mcp_http_server() as target_url:
+        root_dir = _copy_mcp_agent_workspace(integration_workspace_factory(tmp_path, "mcp-http-approved"))
+        _run_mcp_agent(
+            root_dir,
+            binary="./simple_agent.py",
+            env=integration_env,
+            extra_args=["--addition", "--a", "1", "--b", "2"],
+        )
+        agent_id = (root_dir / ".ageos" / "current-agent").read_text(encoding="utf-8").strip()
+        _apply_access_policy_for_url(integration_env, agent_id, target_url, method="POST", policy="always")
+
+        result = _run_mcp_agent(
+            root_dir,
+            binary="./simple_agent.py",
+            env=integration_env,
+            extra_args=["--http-url", target_url],
+        )
+
+    assert "Persistent sandbox found: reusing" in result.stdout
+    assert "mcp_http_result: status=200" in result.stdout
+    assert "host mcp ok" in result.stdout
+    assert "http proxy approved:method=POST" in result.stdout
+
+
 def test_mcp_agent_direct_requests_is_denied_by_proxy(
     integration_env: dict[str, str],
     tmp_path: Path,
@@ -817,3 +868,27 @@ def test_openclaw_reuses_configured_sandbox_without_reset(integration_env: dict[
     assert f"Persistent sandbox found: reusing {agent_id}" in second.stdout
     assert (state_root / "current-agent").read_text(encoding="utf-8").strip() == agent_id
     assert config_path.exists()
+
+
+def test_openclaw_persistent_sandbox_uses_access_manifest_for_web_probe(
+    integration_env: dict[str, str],
+    openclaw_sandbox_state: tuple[Path, str],
+) -> None:
+    openclaw_root, agent_id = openclaw_sandbox_state
+    _run(_openclaw_onboard_command(openclaw_root), env=integration_env, timeout=240)
+    _run(_openclaw_command(openclaw_root, ["config", "validate", "--json"]), env=integration_env, timeout=240)
+
+    with _mcp_http_server() as target_url:
+        _apply_access_policy_for_url(integration_env, agent_id, target_url, method="GET", policy="always")
+        result = _run(
+            _openclaw_shell_script_command(
+                openclaw_root,
+                _openclaw_toolchain_env_script() + "\n" + f"curl --noproxy '' -sS --max-time 5 {shlex.quote(target_url)}",
+            ),
+            env=_proxy_env(integration_env),
+            timeout=240,
+        )
+
+    assert f"Persistent sandbox found: reusing {agent_id}" in result.stdout
+    assert "host mcp ok" in result.stdout
+    assert "http proxy approved:method=GET" in result.stdout

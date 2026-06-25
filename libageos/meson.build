@@ -6,6 +6,7 @@ seccomp_dep = dependency('libseccomp', required: false)
 include_dir = include_directories('include')
 
 libageos_sources = [
+  'access_policy.c',
   'hw_detect.c',
   'http_proxy.c',
   'limits.c',
@@ -34,9 +35,18 @@ executable(
 
 http_proxy_test = executable(
   'ageos-http-proxy-test',
-  ['http_proxy_test.c', 'http_proxy.c', 'log.c'],
+  ['http_proxy_test.c', 'http_proxy.c', 'access_policy.c', 'log.c'],
   include_directories: include_dir,
   install: false,
 )
 
 test('http-proxy', http_proxy_test)
+
+access_policy_test = executable(
+  'ageos-access-policy-test',
+  ['access_policy_test.c', 'access_policy.c', 'log.c'],
+  include_directories: include_dir,
+  install: false,
+)
+
+test('access-policy', access_policy_test)

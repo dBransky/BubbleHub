@@ -2,18 +2,24 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
 
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, TextColumn
+from rich.prompt import Prompt
 from rich.table import Table
 
 from ageos.node.client import SchedulerClient
 
 
-def run_dashboard(refresh_seconds: float = 1.0) -> None:
+def run_dashboard(refresh_seconds: float = 1.0, *, once: bool = False) -> None:
     console = Console()
+    _resolve_pending_access(console)
+    if once:
+        console.print(_render())
+        return
     with Live(_render(), console=console, refresh_per_second=max(1, int(1 / refresh_seconds))) as live:
         try:
             while True:
@@ -21,6 +27,50 @@ def run_dashboard(refresh_seconds: float = 1.0) -> None:
                 time.sleep(refresh_seconds)
         except KeyboardInterrupt:
             return
+
+
+def _resolve_pending_access(console: Console) -> None:
+    native = SchedulerClient.local().native
+    pending = native.access_pending()
+    if not pending:
+        return
+    console.print("[bold]Pending sandbox access requests[/bold]")
+    for item in pending:
+        agent_id = str(item.get("agent_id", ""))
+        if not agent_id:
+            continue
+        console.print(_pending_access_label(item))
+        choice = Prompt.ask(
+            "Policy",
+            choices=["always", "never", "ask"],
+            default="ask",
+            console=console,
+        )
+        method, path = _manifest_scope_for_pending(item)
+        native.apply_access_policy(
+            agent_id,
+            kind=str(item.get("kind", "")),
+            subject=str(item.get("subject", "")),
+            method=method,
+            path=path,
+            policy=choice,
+        )
+
+
+def _pending_access_label(item: dict[str, Any]) -> str:
+    agent_id = str(item.get("agent_id", ""))
+    kind = str(item.get("kind", ""))
+    subject = str(item.get("subject", ""))
+    method = str(item.get("method", ""))
+    path = str(item.get("path", ""))
+    target = subject if not path else f"{subject}{path}"
+    return f"{agent_id}: {kind} {method or '*'} {target}"
+
+
+def _manifest_scope_for_pending(item: dict[str, Any]) -> tuple[str, str]:
+    if str(item.get("kind", "")) == "http":
+        return "*", "*"
+    return str(item.get("method", "")), str(item.get("path", ""))
 
 
 def _render() -> Group:

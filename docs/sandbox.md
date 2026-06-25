@@ -90,6 +90,25 @@ When `isolate_network=1`:
 - Loopback is brought up.
 - The sandbox may receive a loopback inference endpoint that forwards to the host AgeOS inference service.
 - General outbound network access should fail because there is no external interface in the namespace.
+- HTTP clients are pointed at a loopback policy proxy on `127.0.0.1:18080`. The listener runs in the sandbox network namespace, but accepted client sockets are passed to a host-side `libageos` proxy process. That host process evaluates the persistent access manifest before either returning `403` or forwarding the request upstream.
+
+## Access Manifests
+
+Per-sandbox network policy is stored by `libageos`, not Python. The default manifest path is:
+
+```text
+~/.local/state/ageos/sandboxes/<agent-id>/access-manifest.json
+```
+
+Tests and packaged deployments can override the state root with `AGEOS_STATE_DIR`. The manifest contains schema version, agent id, policy entries, and pending requests. Policy entries use `kind`, `subject`, `method`, `path`, and `policy` fields. For HTTP, `subject` is the normalized domain, `method` is the visible HTTP verb, and `path` is the visible request path. HTTPS `CONNECT` requests only expose host/port and the `CONNECT` method.
+
+Valid policies are:
+
+- `always`: forward matching requests through the host proxy.
+- `never`: return `403` for matching requests.
+- `ask`: prompt again when an interactive host is available. In the interactive shell prompt this approves the current request, then asks again next time. If no prompt is possible, AgeOS records pending and denies the current request.
+
+Unknown, missing, malformed, or timed-out policy decisions are fail-closed. If `ageos run` or `ageos shell` is attached to a real terminal, the host CLI pauses the sandboxed agent and asks for a policy decision. If no interactive prompt is possible, the native proxy records the request as pending and returns `403` with a dashboard hint rather than allowing traffic or hanging the agent. `ageos dashboard` lists pending requests through exported `libageos` APIs and submits host decisions back to native code; for HTTP requests, dashboard decisions are host-scoped so an approved HTTP request also covers a later HTTPS `CONNECT` to the same host. `ageos manifest --root-dir <dir>` and `ageos manifest --agent-id <agent>` inspect and edit persisted policies. Python does not parse or edit manifest JSON directly.
 
 When `allow_network` is requested:
 
@@ -149,6 +168,7 @@ However, the sandbox should not yet be treated like a VM, microVM, or browser-gr
 
 - Do not add Python fallbacks that run an agent outside the native sandbox when sandbox setup fails.
 - Keep filesystem and namespace enforcement in `libageos`, not Python.
+- Keep access manifest storage, matching, and pending request updates in `libageos`; Python may render prompts or dashboard UI, but must apply decisions through native APIs.
 - Keep `ageos-sandbox` as a thin helper and make `sandbox.c` own policy.
 - Treat every new host path bind or Landlock allow rule as a security-sensitive change.
 - If a setup step cannot be completed, return an error. Do not degrade silently.
