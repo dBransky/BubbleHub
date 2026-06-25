@@ -44,8 +44,16 @@ def test_run_agent_uses_native_inference_only_network(monkeypatch: pytest.Monkey
     assert client.native.run_sandbox.call_args.kwargs["inference_host"] == "127.0.0.1"
     assert client.native.run_sandbox.call_args.kwargs["inference_port"] == 8000
     assert client.native.run_sandbox.call_args.kwargs["sandbox_inference_port"] == 8000
+    assert client.native.run_sandbox.call_args.kwargs["sandbox_http_proxy_port"] == 18080
     assert captured_env["AGEOS_NETWORK"] == "inference-only"
     assert captured_env["AGEOS_SANDBOX_INFERENCE_PORT"] == "8000"
+    assert captured_env["AGEOS_HTTP_PROXY_PORT"] == "18080"
+    assert captured_env["HTTP_PROXY"] == "http://127.0.0.1:18080"
+    assert captured_env["HTTPS_PROXY"] == "http://127.0.0.1:18080"
+    assert captured_env["http_proxy"] == "http://127.0.0.1:18080"
+    assert captured_env["https_proxy"] == "http://127.0.0.1:18080"
+    assert "127.0.0.1" in captured_env["NO_PROXY"].split(",")
+    assert "localhost" in captured_env["NO_PROXY"].split(",")
 
 
 def test_run_agent_allow_network_disables_isolation() -> None:
@@ -71,6 +79,7 @@ def test_run_agent_allow_network_disables_isolation() -> None:
 
     assert exc.value.exit_code == 0
     assert client.native.run_sandbox.call_args.kwargs["isolate_network"] is False
+    assert client.native.run_sandbox.call_args.kwargs["sandbox_http_proxy_port"] == 0
 
 
 def test_run_agent_stages_relative_binary_without_root_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 #include "ageos/sandbox.h"
+#include "ageos/http_proxy.h"
 #include "ageos/limits.h"
 #include "ageos/log.h"
 #include "ageos/overfs.h"
@@ -470,6 +471,9 @@ static int connect_to_inference(const char *host, uint32_t port) {
 }
 
 static int create_loopback_listener(uint32_t port) {
+    if (!ageos_tcp_port_is_valid(port)) {
+        return -EINVAL;
+    }
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
         return -errno;
@@ -574,6 +578,121 @@ static int start_namespace_inference_proxy(int control_fd, uint32_t listen_port)
         _exit(0);
     }
     return 0;
+}
+
+static int read_sync_byte(int fd);
+
+static int start_namespace_http_proxy(uint32_t listen_port) {
+    int ready[2] = {-1, -1};
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, ready) != 0) {
+        return -errno;
+    }
+    pid_t pid = fork();
+    if (pid < 0) {
+        int err = errno;
+        close(ready[0]);
+        close(ready[1]);
+        return -err;
+    }
+    if (pid == 0) {
+        close(ready[0]);
+        prctl(PR_SET_PDEATHSIG, SIGTERM, 0, 0, 0);
+        if (getppid() == 1) {
+            close(ready[1]);
+            _exit(0);
+        }
+        int rc = ageos_http_proxy_serve(listen_port, ready[1]);
+        close(ready[1]);
+        _exit(rc == 0 ? 0 : 126);
+    }
+    close(ready[1]);
+    int sync_rc = read_sync_byte(ready[0]);
+    close(ready[0]);
+    if (sync_rc != 0) {
+        return sync_rc;
+    }
+    return 0;
+}
+
+static uint32_t resolve_sandbox_http_proxy_port(const ageos_sandbox_config *cfg) {
+    if (cfg == NULL || !cfg->isolate_network) {
+        return 0;
+    }
+    if (cfg->sandbox_http_proxy_port == UINT32_MAX) {
+        return 0;
+    }
+    if (cfg->sandbox_http_proxy_port > 0) {
+        return cfg->sandbox_http_proxy_port;
+    }
+    return AGEOS_HTTP_PROXY_DEFAULT_PORT;
+}
+
+static int no_proxy_has_entry(const char *value, const char *entry) {
+    if (value == NULL || entry == NULL || entry[0] == '\0') {
+        return 0;
+    }
+    size_t entry_len = strlen(entry);
+    const char *cursor = value;
+    while (*cursor != '\0') {
+        while (*cursor == ' ' || *cursor == ',') {
+            cursor++;
+        }
+        if (*cursor == '\0') {
+            break;
+        }
+        const char *start = cursor;
+        while (*cursor != '\0' && *cursor != ',') {
+            cursor++;
+        }
+        size_t len = (size_t)(cursor - start);
+        while (len > 0 && start[len - 1] == ' ') {
+            len--;
+        }
+        if (len == entry_len && strncmp(start, entry, entry_len) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void append_no_proxy_env(const char *env_name, const char *entry) {
+    const char *existing = getenv(env_name);
+    if (existing == NULL || existing[0] == '\0') {
+        setenv(env_name, entry, 1);
+        return;
+    }
+    if (no_proxy_has_entry(existing, entry)) {
+        return;
+    }
+    char buffer[512];
+    int written = snprintf(buffer, sizeof(buffer), "%s,%s", existing, entry);
+    if (written > 0 && (size_t)written < sizeof(buffer)) {
+        setenv(env_name, buffer, 1);
+    }
+}
+
+static void apply_sandbox_http_proxy_env(uint32_t port) {
+    if (!ageos_tcp_port_is_valid(port)) {
+        return;
+    }
+    char proxy_url[64];
+    int written = snprintf(proxy_url, sizeof(proxy_url), "http://127.0.0.1:%u", port);
+    if (written < 0 || (size_t)written >= sizeof(proxy_url)) {
+        return;
+    }
+    setenv("HTTP_PROXY", proxy_url, 1);
+    setenv("HTTPS_PROXY", proxy_url, 1);
+    setenv("http_proxy", proxy_url, 1);
+    setenv("https_proxy", proxy_url, 1);
+    char port_buf[16];
+    written = snprintf(port_buf, sizeof(port_buf), "%u", port);
+    if (written > 0 && (size_t)written < sizeof(port_buf)) {
+        setenv("AGEOS_HTTP_PROXY_PORT", port_buf, 1);
+    }
+    append_no_proxy_env("NO_PROXY", "127.0.0.1");
+    append_no_proxy_env("NO_PROXY", "localhost");
+    append_no_proxy_env("no_proxy", "127.0.0.1");
+    append_no_proxy_env("no_proxy", "localhost");
 }
 
 static int write_file(const char *path, const char *value) {
@@ -1139,7 +1258,11 @@ static int setup_sandbox_home(
     setenv("LANG", "en_US.UTF-8", 1);
     setenv("LANGUAGE", "en_US.UTF-8", 1);
     setenv("TERM", "xterm-256color", 1);
-    setenv("PS1", "\\[\\e[1;32m\\]\\u\\[\\e[0m\\]:\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ ", 1);
+    setenv("PS1",
+           "\\[\\e[1;35m\\][AgeOS]\\[\\e[0m\\] "
+           "\\[\\e[1;32m\\]\\u\\[\\e[0m\\] "
+           "\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ ",
+           1);
     setenv("AGEOS_AGENT_HOME", visible_home_path, 1);
     setenv("AGEOS_WORKSPACE", visible_workspace_path, 1);
     return setup_sandbox_identity_files(identity_agent_dir, target_root, agent_name, visible_home_path, agent_uid, agent_gid);
@@ -1300,6 +1423,8 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
         cfg->inference_host[0] != '\0' &&
         cfg->inference_port > 0 &&
         cfg->sandbox_inference_port > 0;
+    uint32_t sandbox_http_proxy_port = resolve_sandbox_http_proxy_port(cfg);
+    int http_proxy_enabled = sandbox_http_proxy_port > 0;
     AGEOS_LOG_DEBUG(
         "sandbox inference proxy",
         "enabled=%d host=%s host_port=%u sandbox_port=%u",
@@ -1307,6 +1432,11 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
         cfg->inference_host != NULL ? cfg->inference_host : "",
         cfg->inference_port,
         cfg->sandbox_inference_port);
+    AGEOS_LOG_DEBUG(
+        "sandbox http proxy",
+        "enabled=%d sandbox_port=%u",
+        http_proxy_enabled,
+        sandbox_http_proxy_port);
     int inference_control[2] = {-1, -1};
     pid_t host_proxy_pid = -1;
     if (inference_proxy_enabled) {
@@ -1441,6 +1571,14 @@ int ageos_sandbox_run(const ageos_sandbox_config *cfg) {
                     _exit(126);
                 }
                 close(inference_control[1]);
+            }
+            if (http_proxy_enabled) {
+                int proxy_rc = start_namespace_http_proxy(sandbox_http_proxy_port);
+                if (proxy_rc != 0) {
+                    AGEOS_LOG_ERROR("failed to start http deny proxy", "%s", strerror(-proxy_rc));
+                    _exit(126);
+                }
+                apply_sandbox_http_proxy_env(sandbox_http_proxy_port);
             }
             if (getenv("AGEOS_NETWORK") == NULL) {
                 setenv("AGEOS_NETWORK", "loopback", 1);

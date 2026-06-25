@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -102,6 +103,155 @@ def run_network_isolated() -> None:
     fail_if_succeeds("public network connect while network is isolated", connect_public_network)
 
 
+def run_proxy_bypass() -> None:
+    if not expect_network_blocked:
+        return
+
+    target = "http://example.com/ageos-proxy-bypass"
+
+    def curl_must_not_fetch(url_args: list[str], name: str) -> None:
+        if shutil.which("curl") is None:
+            return
+        result = subprocess.run(
+            ["curl", "-fsS", "--max-time", "3", *url_args, target],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if result.returncode == 0:
+            failures.append(name)
+
+    curl_must_not_fetch([], "curl direct web fetch after unsetting proxy env")
+    curl_must_not_fetch(["--noproxy", "*"], "curl --noproxy web fetch after unsetting proxy env")
+    curl_must_not_fetch(["--proxy", ""], "curl empty --proxy web fetch after unsetting proxy env")
+
+    def urllib_fetch() -> None:
+        import urllib.request
+
+        urllib.request.urlopen(target, timeout=3).read()
+
+    fail_if_succeeds("urllib direct web fetch after unsetting proxy env", urllib_fetch)
+
+    def requests_fetch() -> None:
+        import requests
+
+        session = requests.Session()
+        session.trust_env = False
+        response = session.get(target, timeout=3)
+        if response.status_code < 400:
+            raise RuntimeError(f"unexpected HTTP {response.status_code}")
+
+    try:
+        import requests  # noqa: F401
+    except ImportError:
+        pass
+    else:
+        fail_if_succeeds("requests direct web fetch after unsetting proxy env", requests_fetch)
+
+    def raw_http_get() -> None:
+        with socket.create_connection(("93.184.216.34", 80), timeout=2) as sock:
+            sock.sendall(b"GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+            if sock.recv(16):
+                raise RuntimeError("received bytes from public HTTP endpoint")
+
+    fail_if_succeeds("raw HTTP GET after unsetting proxy env", raw_http_get)
+
+
+ROGUE_HOST = "203.0.113.1"
+WEB_TARGET = "http://example.com/ageos-endpoint-repoint"
+COMMON_LEGIT_HOSTS = (
+    "10.0.0.1",
+    "192.168.0.1",
+    "192.168.1.1",
+    "172.17.0.1",
+    "172.18.0.1",
+    "1.1.1.1",
+)
+
+
+def legit_candidate_ips() -> list[str]:
+    candidates: list[str] = []
+
+    def add_host(host: str) -> None:
+        if host and host not in candidates:
+            candidates.append(host)
+
+    route_path = Path("/proc/net/route")
+    if route_path.exists():
+        try:
+            route_lines = route_path.read_text(encoding="utf-8").splitlines()[1:]
+        except OSError:
+            route_lines = []
+        for line in route_lines:
+            fields = line.split()
+            if len(fields) >= 3 and fields[1] == "00000000":
+                gateway_hex = fields[2]
+                if gateway_hex != "00000000" and len(gateway_hex) == 8:
+                    octets = bytes.fromhex(gateway_hex)
+                    add_host(".".join(str(byte) for byte in reversed(octets)))
+
+    for host in COMMON_LEGIT_HOSTS:
+        add_host(host)
+    add_host(ROGUE_HOST)
+    return candidates
+
+
+def run_endpoint_repoint() -> None:
+    if not expect_network_blocked:
+        return
+
+    def curl_must_not_fetch(proxy_host: str, name: str) -> None:
+        if shutil.which("curl") is None:
+            return
+        os.environ["HTTP_PROXY"] = f"http://{proxy_host}:8080"
+        os.environ["HTTPS_PROXY"] = os.environ["HTTP_PROXY"]
+        os.environ["http_proxy"] = os.environ["HTTP_PROXY"]
+        os.environ["https_proxy"] = os.environ["HTTPS_PROXY"]
+        result = subprocess.run(
+            ["curl", "-fsS", "--max-time", "3", WEB_TARGET],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if result.returncode == 0:
+            failures.append(name)
+
+    def inference_must_not_connect(host: str, name: str) -> None:
+        os.environ["OPENAI_BASE_URL"] = f"http://{host}:8000/v1"
+        os.environ["AGEOS_SANDBOX_INFERENCE_HOST"] = host
+        os.environ["AGEOS_SANDBOX_INFERENCE_PORT"] = "8000"
+        os.environ["AGEOS_API_BASE_URL"] = f"http://{host}:8000"
+
+        def urllib_inference_fetch() -> None:
+            import urllib.request
+
+            urllib.request.urlopen(f"http://{host}:8000/v1/models", timeout=3).read()
+
+        fail_if_succeeds(f"{name} urllib", urllib_inference_fetch)
+
+        def inference_socket_connect() -> None:
+            with socket.create_connection((host, 8000), timeout=2):
+                pass
+
+        fail_if_succeeds(f"{name} socket", inference_socket_connect)
+
+    for host in legit_candidate_ips():
+        curl_must_not_fetch(host, f"curl via repointed proxy host {host}")
+        inference_must_not_connect(host, f"inference repoint to {host}")
+
+    if shutil.which("curl") is not None:
+        os.environ["HTTP_PROXY"] = "http://127.0.0.1:9999"
+        os.environ["HTTPS_PROXY"] = os.environ["HTTP_PROXY"]
+        result = subprocess.run(
+            ["curl", "-fsS", "--max-time", "3", WEB_TARGET],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        if result.returncode == 0:
+            failures.append("curl via wrong loopback proxy port")
+
+
 categories = {
     "env": lambda: None,
     "fs-direct": run_fs_direct,
@@ -109,6 +259,8 @@ categories = {
     "protected-paths": run_protected_paths,
     "namespace-tools": run_namespace_tools,
     "network-isolated": run_network_isolated,
+    "proxy-bypass": run_proxy_bypass,
+    "endpoint-repoint": run_endpoint_repoint,
 }
 
 if category == "all":

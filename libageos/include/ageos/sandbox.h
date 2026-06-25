@@ -17,6 +17,7 @@ typedef struct {
     const char *inference_host;
     uint32_t inference_port;
     uint32_t sandbox_inference_port;
+    uint32_t sandbox_http_proxy_port;
 } ageos_sandbox_config;
 
 int ageos_sandbox_run(const ageos_sandbox_config *cfg);

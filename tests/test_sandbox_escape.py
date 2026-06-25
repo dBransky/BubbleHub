@@ -22,6 +22,8 @@ PYTHON_ESCAPE_CATEGORIES = [
 ]
 PYTHON_ISOLATED_ONLY_CATEGORIES = [
     "network-isolated",
+    "proxy-bypass",
+    "endpoint-repoint",
 ]
 C_ESCAPE_CATEGORIES = [
     "env",
@@ -38,6 +40,7 @@ C_ESCAPE_CATEGORIES = [
 ]
 C_ISOLATED_ONLY_CATEGORIES = [
     "network-isolated",
+    "endpoint-repoint",
 ]
 
 

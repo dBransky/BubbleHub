@@ -26,6 +26,7 @@ _OVERLAY_UPPER_DIR = "upper"
 _OVERLAY_WORK_DIR = "work"
 _DEFAULT_ROOTFS_DIR = Path("/opt/ageos/rootfs/ubuntu-26.04")
 _ROOTFS_RELEASE = "ubuntu-26.04"
+_SANDBOX_HTTP_PROXY_PORT = 18080
 _SANDBOX_SYSTEM_PREFIXES = (
     Path("/usr"),
     Path("/bin"),
@@ -157,6 +158,10 @@ def run_agent(
             raise typer.Exit(subprocess.call(host_args, cwd=sandbox_paths.host_workdir, env=env))
         inference = _sandbox_inference_endpoint(endpoint)
         _apply_sandbox_inference_env(env, inference)
+        sandbox_http_proxy_port = 0
+        if not allow_network:
+            sandbox_http_proxy_port = _SANDBOX_HTTP_PROXY_PORT
+            _apply_sandbox_http_proxy_env(env, sandbox_http_proxy_port)
         exit_code = _run_native_sandbox(
             client,
             sandbox_args,
@@ -173,6 +178,7 @@ def run_agent(
             inference_host=inference.host,
             inference_port=inference.host_port,
             sandbox_inference_port=inference.sandbox_port,
+            sandbox_http_proxy_port=sandbox_http_proxy_port,
         )
         log_debug("sandbox exited", f"agent_id={agent_id} exit_code={exit_code}")
         raise typer.Exit(exit_code)
@@ -396,6 +402,7 @@ def _run_native_sandbox(
     inference_host: str | None = None,
     inference_port: int = 0,
     sandbox_inference_port: int = 0,
+    sandbox_http_proxy_port: int = 0,
 ) -> int:
     if not target_args:
         raise typer.BadParameter("missing sandbox command")
@@ -418,6 +425,7 @@ def _run_native_sandbox(
             inference_host=inference_host,
             inference_port=inference_port,
             sandbox_inference_port=sandbox_inference_port,
+            sandbox_http_proxy_port=sandbox_http_proxy_port,
         )
     finally:
         os.environ.clear()
@@ -537,6 +545,25 @@ def _apply_sandbox_inference_env(env: dict[str, str], endpoint: SandboxInference
     env["AGEOS_SANDBOX_INFERENCE_HOST"] = "127.0.0.1"
     env["AGEOS_SANDBOX_INFERENCE_PORT"] = str(endpoint.sandbox_port)
     env["AGEOS_NETWORK"] = "inference-only"
+
+
+def _apply_sandbox_http_proxy_env(env: dict[str, str], proxy_port: int) -> None:
+    proxy_url = f"http://127.0.0.1:{proxy_port}"
+    env["HTTP_PROXY"] = proxy_url
+    env["HTTPS_PROXY"] = proxy_url
+    env["http_proxy"] = proxy_url
+    env["https_proxy"] = proxy_url
+    env["AGEOS_HTTP_PROXY_PORT"] = str(proxy_port)
+    env["NO_PROXY"] = _append_no_proxy(env.get("NO_PROXY", ""))
+    env["no_proxy"] = _append_no_proxy(env.get("no_proxy", ""))
+
+
+def _append_no_proxy(value: str) -> str:
+    entries = [entry.strip() for entry in value.split(",") if entry.strip()]
+    for entry in ("127.0.0.1", "localhost"):
+        if entry not in entries:
+            entries.append(entry)
+    return ",".join(entries)
 
 
 class SandboxInferenceEndpoint:

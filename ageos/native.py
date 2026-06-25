@@ -52,6 +52,7 @@ class SandboxConfig(ctypes.Structure):
         ("inference_host", ctypes.c_char_p),
         ("inference_port", ctypes.c_uint32),
         ("sandbox_inference_port", ctypes.c_uint32),
+        ("sandbox_http_proxy_port", ctypes.c_uint32),
     ]
 
 
@@ -560,6 +561,8 @@ class NativeScheduler:
         inference_host: str | None = None,
         inference_port: int = 0,
         sandbox_inference_port: int = 0,
+        sandbox_http_proxy_port: int = 0,
+        disable_http_proxy: bool = False,
     ) -> int:
         command = [
             _sandbox_helper(),
@@ -588,6 +591,10 @@ class NativeScheduler:
             command.extend(["--inference-port", str(int(inference_port))])
         if sandbox_inference_port:
             command.extend(["--sandbox-inference-port", str(int(sandbox_inference_port))])
+        if sandbox_http_proxy_port > 0:
+            command.extend(["--sandbox-http-proxy-port", str(int(sandbox_http_proxy_port))])
+        if disable_http_proxy:
+            command.append("--no-http-proxy")
         command.append("--")
         command.extend(argv if argv else [binary])
         return subprocess.call(command)
@@ -609,6 +616,7 @@ class NativeScheduler:
         inference_host: str | None = None,
         inference_port: int = 0,
         sandbox_inference_port: int = 0,
+        sandbox_http_proxy_port: int = 0,
     ) -> int:
         encoded_args = [_bytes(arg) for arg in argv]
         argv_array = (ctypes.c_char_p * (len(encoded_args) + 1))()
@@ -630,6 +638,7 @@ class NativeScheduler:
             inference_host=_bytes(inference_host),
             inference_port=int(inference_port),
             sandbox_inference_port=int(sandbox_inference_port),
+            sandbox_http_proxy_port=int(sandbox_http_proxy_port),
         )
         from ageos.log import log_debug
 

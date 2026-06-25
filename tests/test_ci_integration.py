@@ -7,7 +7,10 @@ import shutil
 import subprocess
 import uuid
 from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 
 import pytest
 
@@ -109,6 +112,15 @@ def _copy_openclaw_workspace(source_root: Path, workspace_root: Path) -> Path:
     return workspace_root
 
 
+def _copy_mcp_agent_workspace(workspace_root: Path) -> Path:
+    shutil.copytree(
+        ROOT / "examples" / "mcp_agent",
+        workspace_root,
+        ignore=shutil.ignore_patterns("__pycache__", ".ageos"),
+    )
+    return workspace_root
+
+
 @pytest.fixture
 def openclaw_sandbox_state(
     integration_env: dict[str, str],
@@ -201,6 +213,72 @@ def _run_rootfs_shell(
     if force_new_sandbox:
         command.insert(2, "--force-new-sandbox")
     return _run(command, env=env, timeout=timeout)
+
+
+def _proxy_env(env: dict[str, str]) -> dict[str, str]:
+    proxy_env = env.copy()
+    proxy_env["AGEOS_LOG_LEVEL"] = "info"
+    return proxy_env
+
+
+def _assert_proxy_denied_output(output: str, method: str, url: str) -> None:
+    assert "AgeOS proxy denied the request" in output
+    assert f"http proxy denied:method={method} url={url}" in output
+
+
+def _assert_proxy_log_prefix(output: str, method: str, url_prefix: str) -> None:
+    assert "AgeOS proxy denied the request" in output or "403" in output
+    assert f"http proxy denied:method={method} url={url_prefix}" in output
+
+
+def _run_mcp_agent(
+    root_dir: Path,
+    *,
+    binary: str,
+    env: dict[str, str],
+    extra_args: list[str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    command = [
+        "ageos",
+        "run",
+        "--memory",
+        "4G",
+        "--root-dir",
+        str(root_dir),
+        "--binary",
+        binary,
+    ]
+    if extra_args:
+        command.extend(["--", *extra_args])
+    return _run(command, env=_proxy_env(env), timeout=240)
+
+
+class _QuietHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"host mcp ok")
+
+    def do_POST(self) -> None:
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"host mcp ok"}]}}')
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
+
+
+@contextmanager
+def _mcp_http_server() -> Iterator[str]:
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _QuietHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    try:
+        yield f"http://127.0.0.1:{port}/mcp"
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def _openclaw_setup_command(openclaw_root: Path) -> list[str]:
@@ -437,6 +515,219 @@ def test_ubuntu_rootfs_overlay_environment_and_private_copyup(
     )
     reset_agent_id = (root_dir / ".ageos" / "current-agent").read_text(encoding="utf-8").strip()
     assert reset_agent_id != agent_id
+
+
+def test_ageos_cli_runs_inside_ubuntu_rootfs_sandbox(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+) -> None:
+    root_dir = integration_workspace_factory(tmp_path, "nested-ageos-cli")
+
+    result = _run_rootfs_shell(
+        root_dir,
+        env=integration_env,
+        script=(
+            "set -eu; "
+            'help_output="$(ageos --help)"; '
+            "printf '%s\\n' \"$help_output\"; "
+            "printf '%s\\n' \"$help_output\" | grep -q 'AgeOS local agent runtime'; "
+            "ageos --version | grep -q '^ageos '"
+        ),
+    )
+
+    assert "AgeOS local agent runtime" in result.stdout
+
+
+def test_internal_tool_web_access_is_denied_by_proxy(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+) -> None:
+    root_dir = integration_workspace_factory(tmp_path, "proxy-tool-web")
+    tool = root_dir / "node_modules" / ".bin" / "internal-web-tool"
+    tool.parent.mkdir(parents=True)
+    target_url = "http://example.com/internal-tool-web"
+    tool.write_text(
+        "#!/bin/sh\n"
+        "set -eu\n"
+        f"status=$(curl -sS -o \"$TMPDIR/tool-body\" -w '%{{http_code}}' --max-time 5 {target_url})\n"
+        'test "$status" = 403\n'
+        'cat "$TMPDIR/tool-body"\n',
+        encoding="utf-8",
+    )
+    tool.chmod(0o755)
+
+    result = _run(
+        [
+            "ageos",
+            "run",
+            "--memory",
+            "4G",
+            "--root-dir",
+            str(root_dir),
+            "--binary",
+            "internal-web-tool",
+        ],
+        env=_proxy_env(integration_env),
+        timeout=240,
+    )
+
+    _assert_proxy_denied_output(result.stdout, "GET", target_url)
+
+
+def test_agent_http_mcp_host_access_is_denied_by_proxy(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+) -> None:
+    with _mcp_http_server() as target_url:
+        root_dir = integration_workspace_factory(tmp_path, "proxy-mcp-http")
+        result = _run_rootfs_shell(
+            root_dir,
+            env=_proxy_env(integration_env),
+            script=(
+                "set -eu; "
+                f"status=$(curl --noproxy '' -sS -o \"$TMPDIR/mcp-body\" -w '%{{http_code}}' --max-time 5 {target_url}); "
+                'test "$status" = 403; '
+                'cat "$TMPDIR/mcp-body"'
+            ),
+        )
+
+    _assert_proxy_denied_output(result.stdout, "GET", target_url)
+
+
+MCP_AGENT_BINARIES = ["./simple_agent.py", "./mcp_agent.py"]
+
+
+@pytest.mark.parametrize("agent_binary", MCP_AGENT_BINARIES)
+def test_mcp_agent_stdio_tool_web_search_is_denied_by_proxy(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+    agent_binary: str,
+) -> None:
+    slug = agent_binary.replace("./", "").replace(".", "-")
+    root_dir = _copy_mcp_agent_workspace(integration_workspace_factory(tmp_path, f"mcp-stdio-{slug}"))
+    result = _run_mcp_agent(root_dir, binary=agent_binary, env=integration_env)
+
+    assert "mcp_stdio_result: search_status=403" in result.stdout
+    _assert_proxy_log_prefix(result.stdout, "GET", "http://searx.tiekoetter.com/search?")
+
+
+@pytest.mark.parametrize("agent_binary", MCP_AGENT_BINARIES)
+def test_mcp_agent_http_host_mcp_is_denied_by_proxy(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+    agent_binary: str,
+) -> None:
+    with _mcp_http_server() as target_url:
+        slug = agent_binary.replace("./", "").replace(".", "-")
+        root_dir = _copy_mcp_agent_workspace(integration_workspace_factory(tmp_path, f"mcp-http-{slug}"))
+        result = _run_mcp_agent(
+            root_dir,
+            binary=agent_binary,
+            env=integration_env,
+            extra_args=["--http-url", target_url],
+        )
+
+    assert "mcp_http_result: status=403" in result.stdout
+    _assert_proxy_denied_output(result.stdout, "POST", target_url)
+
+
+def test_mcp_agent_direct_requests_is_denied_by_proxy(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+) -> None:
+    target_url = "http://example.com/direct-requests"
+    root_dir = _copy_mcp_agent_workspace(integration_workspace_factory(tmp_path, "mcp-direct-proxy"))
+    result = _run_mcp_agent(
+        root_dir,
+        binary="./simple_agent.py",
+        env=integration_env,
+        extra_args=["--direct-url", target_url],
+    )
+
+    assert "direct_http_result: status=403" in result.stdout
+    _assert_proxy_denied_output(result.stdout, "GET", target_url)
+
+
+def test_mcp_agent_addition_stdio_local(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+) -> None:
+    root_dir = _copy_mcp_agent_workspace(integration_workspace_factory(tmp_path, "mcp-addition-local"))
+    result = _run_mcp_agent(
+        root_dir,
+        binary="./simple_agent.py",
+        env=integration_env,
+        extra_args=["--addition", "--a", "123", "--b", "456"],
+    )
+
+    assert result.returncode == 0
+    assert "mcp_addition_result: 579" in result.stdout
+    assert "http proxy denied" not in result.stdout
+
+
+def test_agent_curl_web_access_is_denied_by_proxy(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+) -> None:
+    target_url = "http://example.com/curl-web"
+    root_dir = integration_workspace_factory(tmp_path, "proxy-curl-web")
+    result = _run_rootfs_shell(
+        root_dir,
+        env=_proxy_env(integration_env),
+        script=(
+            "set -eu; "
+            f"status=$(curl -sS -o \"$TMPDIR/curl-body\" -w '%{{http_code}}' --max-time 5 {target_url}); "
+            'test "$status" = 403; '
+            'cat "$TMPDIR/curl-body"'
+        ),
+    )
+
+    _assert_proxy_denied_output(result.stdout, "GET", target_url)
+
+
+def test_tenant_unset_proxy_env_cannot_bypass_network_in_rootfs(
+    integration_env: dict[str, str],
+    tmp_path: Path,
+    integration_workspace_factory: Callable[[Path, str], Path],
+) -> None:
+    target_url = "http://example.com/tenant-rootfs-bypass"
+    root_dir = integration_workspace_factory(tmp_path, "proxy-bypass-escape")
+    result = _run_rootfs_shell(
+        root_dir,
+        env=_proxy_env(integration_env),
+        script=(
+            "set -eu; "
+            'test -n "$HTTP_PROXY"; '
+            "unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy AGEOS_HTTP_PROXY_PORT NO_PROXY no_proxy; "
+            f"if curl -fsS --max-time 3 {target_url} >/dev/null 2>&1; then exit 9; fi; "
+            f"if curl -fsS --noproxy '*' --max-time 3 {target_url} >/dev/null 2>&1; then exit 10; fi; "
+            "python3 - <<'PY'\n"
+            "import os\n"
+            "import urllib.request\n"
+            "for key in list(os.environ):\n"
+            "    if key.startswith('AGEOS_') or 'proxy' in key.lower():\n"
+            "        os.environ.pop(key, None)\n"
+            "try:\n"
+            f"    urllib.request.urlopen('{target_url}', timeout=3).read()\n"
+            "except Exception:\n"
+            "    pass\n"
+            "else:\n"
+            "    raise SystemExit(11)\n"
+            "print('tenant_rootfs_proxy_bypass_blocked')\n"
+            "PY"
+        ),
+    )
+
+    assert "tenant_rootfs_proxy_bypass_blocked" in result.stdout
+    assert "http proxy denied" not in result.stdout
 
 
 def test_sandbox_installs_openclaw_with_nvm_and_npm(

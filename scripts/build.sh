@@ -96,6 +96,12 @@ if [[ ${#AGEOS_WHEELS[@]} -eq 0 ]]; then
   echo "Failed to build AgeOS wheel." >&2
   exit 1
 fi
+AGEOS_WHEEL="${AGEOS_WHEELS[0]}"
+AGEOS_WHEEL_BASE="${AGEOS_WHEEL##*/}"
+AGEOS_VERSION="${AGEOS_WHEEL_BASE#ageos-}"
+AGEOS_VERSION="${AGEOS_VERSION%%-py3-*}"
+AGEOS_VERSION="${AGEOS_VERSION%%-cp*}"
+AGEOS_VERSION="${AGEOS_VERSION%%.whl}"
 
 echo "Installing AgeOS Python runtime into ${INSTALL_PREFIX}..."
 if [[ "${AGEOS_SKIP_ROOTFS:-0}" != "1" ]] && rootfs_is_current; then
@@ -113,7 +119,10 @@ if [[ -n "$PRESERVED_ROOTFS" ]]; then
 fi
 ${SUDO} "$PYTHON_BIN" -m venv "$INSTALL_PREFIX"
 ${SUDO} "$INSTALL_PREFIX/bin/python" -m pip install --upgrade pip
-${SUDO} "$INSTALL_PREFIX/bin/python" -m pip install --find-links "$PY_WHEEL_DIR" "${AGEOS_WHEELS[0]}"
+${SUDO} "$INSTALL_PREFIX/bin/python" -m pip install --no-deps "${AGEOS_WHEELS[0]}"
+${SUDO} "$INSTALL_PREFIX/bin/python" -m pip install \
+  --find-links "$PY_WHEEL_DIR" \
+  "ageos[examples]==${AGEOS_VERSION}"
 ${SUDO} env AGEOS_GPU="$AGEOS_GPU_MODE" "$INSTALL_PREFIX/bin/python" -m ageos.gpu_setup \
   --mode "$AGEOS_GPU_MODE" \
   --wheel "${AGEOS_WHEELS[0]}" \
@@ -126,12 +135,12 @@ ${SUDO} mkdir -p "$BIN_DIR"
 ${SUDO} rm -f "$BIN_DIR/ageos" "$BIN_DIR/ageos-node"
 ${SUDO} tee "$BIN_DIR/ageos" >/dev/null <<EOF
 #!/usr/bin/env bash
-exec "$INSTALL_PREFIX/bin/python" -I -c 'import sys; sys.argv[0] = "ageos"; from ageos.cli.main import run_cli; run_cli()' "\$@"
+exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("AGEOS_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path(sys.prefix) / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "ageos").is_dir()]; sys.argv[0] = "ageos"; from ageos.cli.main import run_cli; run_cli()' "\$@"
 EOF
 ${SUDO} chmod 0755 "$BIN_DIR/ageos"
 ${SUDO} tee "$BIN_DIR/ageos-node" >/dev/null <<EOF
 #!/usr/bin/env bash
-exec "$INSTALL_PREFIX/bin/python" -I -c 'import sys; sys.argv[0] = "ageos-node"; from ageos.node.daemon import main; raise SystemExit(main())' "\$@"
+exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("AGEOS_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path(sys.prefix) / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "ageos").is_dir()]; sys.argv[0] = "ageos-node"; from ageos.node.daemon import main; raise SystemExit(main())' "\$@"
 EOF
 ${SUDO} chmod 0755 "$BIN_DIR/ageos-node"
 ${SUDO} ln -sf "$INSTALL_PREFIX/bin/pytest" "$BIN_DIR/pytest"

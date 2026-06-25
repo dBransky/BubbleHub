@@ -39,6 +39,7 @@ int main(int argc, char **argv) {
         .inference_host = NULL,
         .inference_port = 0,
         .sandbox_inference_port = 0,
+        .sandbox_http_proxy_port = 0,
     };
 
     int i = 1;
@@ -71,6 +72,10 @@ int main(int argc, char **argv) {
             cfg.inference_port = (uint32_t)strtoul(argv[++i], NULL, 10);
         } else if (strcmp(argv[i], "--sandbox-inference-port") == 0 && i + 1 < argc) {
             cfg.sandbox_inference_port = (uint32_t)strtoul(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "--sandbox-http-proxy-port") == 0 && i + 1 < argc) {
+            cfg.sandbox_http_proxy_port = (uint32_t)strtoul(argv[++i], NULL, 10);
+        } else if (strcmp(argv[i], "--no-http-proxy") == 0) {
+            cfg.sandbox_http_proxy_port = UINT32_MAX;
         } else if (strcmp(argv[i], "--log-level") == 0 && i + 1 < argc) {
             ageos_log_set_level(argv[++i]);
         } else {
@@ -82,7 +87,7 @@ int main(int argc, char **argv) {
         AGEOS_LOG_ERROR("missing sandbox command", "");
         AGEOS_LOG_INFO(
             "ageos-sandbox usage",
-            "[--memory 2G] [--cpu 50] [--niceness N] [--workdir DIR] [--root-dir DIR] [--rootfs-dir DIR] [--overlay-upper-dir DIR] [--overlay-work-dir DIR] [--isolate-network] [--inference-host HOST] [--inference-port PORT] [--sandbox-inference-port PORT] [--log-level LEVEL] -- COMMAND [ARGS...]");
+            "[--memory 2G] [--cpu 50] [--niceness N] [--workdir DIR] [--root-dir DIR] [--rootfs-dir DIR] [--overlay-upper-dir DIR] [--overlay-work-dir DIR] [--isolate-network] [--inference-host HOST] [--inference-port PORT] [--sandbox-inference-port PORT] [--sandbox-http-proxy-port PORT] [--no-http-proxy] [--log-level LEVEL] -- COMMAND [ARGS...]");
         return 2;
     }
     cfg.binary = argv[i];

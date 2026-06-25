@@ -25,6 +25,7 @@ dev = [
   "pytest-cov>=5.0",
   "ruff>=0.4",
 ]
+examples = []
 vllm = [
   "vllm>=0.5",
 ]
@@ -47,6 +48,8 @@ ageos = ["config/*.yaml"]
 "share/ageos/libageos" = [
   "libageos/ageos_sandbox_main.c",
   "libageos/hw_detect.c",
+  "libageos/http_proxy.c",
+  "libageos/http_proxy_test.c",
   "libageos/landlock.c",
   "libageos/limits.c",
   "libageos/log.c",
@@ -57,6 +60,7 @@ ageos = ["config/*.yaml"]
 ]
 "share/ageos/libageos/include/ageos" = [
   "libageos/include/ageos/hw.h",
+  "libageos/include/ageos/http_proxy.h",
   "libageos/include/ageos/limits.h",
   "libageos/include/ageos/log.h",
   "libageos/include/ageos/overfs.h",

@@ -439,6 +439,50 @@ static void run_network_isolated(int expect_network_blocked) {
     }
 }
 
+static int connect_host_endpoint(const char *ip, uint16_t port) {
+    signal(SIGALRM, SIG_DFL);
+    alarm(2);
+    int fd = (int)syscall(SYS_socket, AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return 1;
+    }
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    if (inet_pton(AF_INET, ip, &addr.sin_addr) != 1) {
+        syscall(SYS_close, fd);
+        return 1;
+    }
+    int rc = syscall(SYS_connect, fd, &addr, sizeof(addr));
+    syscall(SYS_close, fd);
+    return rc == 0 ? 0 : 1;
+}
+
+static void run_endpoint_repoint(int expect_network_blocked) {
+    static const char *candidate_ips[] = {
+        "10.0.0.1",
+        "192.168.0.1",
+        "192.168.1.1",
+        "172.17.0.1",
+        "172.18.0.1",
+        "1.1.1.1",
+        "203.0.113.1",
+    };
+    char label[128];
+
+    if (!expect_network_blocked) {
+        return;
+    }
+    for (size_t i = 0; i < sizeof(candidate_ips) / sizeof(candidate_ips[0]); i++) {
+        const char *ip = candidate_ips[i];
+        snprintf(label, sizeof(label), "syscall connect to repointed inference host %s", ip);
+        record_if_success(label, connect_host_endpoint(ip, 8000));
+        snprintf(label, sizeof(label), "syscall connect to repointed proxy host %s", ip);
+        record_if_success(label, connect_host_endpoint(ip, 8080));
+    }
+}
+
 static int run_category(const char *category, const char *workspace, const char *host_canary, int expect_network_blocked) {
     if (strcmp(category, "env") == 0) {
         return 0;
@@ -465,6 +509,8 @@ static int run_category(const char *category, const char *workspace, const char 
         run_swap(workspace);
     } else if (strcmp(category, "network-isolated") == 0) {
         run_network_isolated(expect_network_blocked);
+    } else if (strcmp(category, "endpoint-repoint") == 0) {
+        run_endpoint_repoint(expect_network_blocked);
     } else if (strcmp(category, "all") == 0) {
         run_fs_direct(host_canary);
         run_proc_root(host_canary);
@@ -477,6 +523,7 @@ static int run_category(const char *category, const char *workspace, const char 
         run_kernel();
         run_swap(workspace);
         run_network_isolated(expect_network_blocked);
+        run_endpoint_repoint(expect_network_blocked);
     } else {
         fprintf(stderr, "unknown C escape category: %s\n", category);
         return 2;
