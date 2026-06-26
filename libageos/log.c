@@ -76,27 +76,27 @@ static int path_starts_with(const char *path, const char *prefix) {
 }
 
 static int sandbox_allows_log_file(const char *path) {
-    const char *roots[] = {
-        getenv("AGEOS_AGENT_HOME"),
-        getenv("AGEOS_WORKSPACE"),
-        getenv("TMPDIR"),
-        getenv("HOME"),
-        "/workspace",
-        NULL,
+    static const char *const env_roots[] = {
+        "AGEOS_AGENT_HOME",
+        "AGEOS_WORKSPACE",
+        "TMPDIR",
+        "HOME",
     };
     size_t i;
+
     if (getenv("AGEOS_SANDBOX") == NULL || strcmp(getenv("AGEOS_SANDBOX"), "1") != 0) {
         return 1;
     }
     if (path == NULL || path[0] == '\0') {
         return 0;
     }
-    for (i = 0; roots[i] != NULL; i++) {
-        if (path_starts_with(path, roots[i])) {
+    for (i = 0; i < sizeof(env_roots) / sizeof(env_roots[0]); i++) {
+        const char *root = getenv(env_roots[i]);
+        if (root != NULL && path_starts_with(path, root)) {
             return 1;
         }
     }
-    return 0;
+    return path_starts_with(path, "/workspace");
 }
 
 static int should_emit(int level) {

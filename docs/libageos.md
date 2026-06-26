@@ -109,3 +109,17 @@ Public scheduler and inference API. This is the native ABI for language bindings
 ### `libageos/ageos_sandbox_main.c`
 
 Small executable entrypoint for running the native sandbox from a process boundary. Keep policy in `sandbox.c`; this file should stay a thin command wrapper.
+
+## Native Unit Tests
+
+C unit tests live under `libageos/tests/`. Each module has a dedicated test binary that links against the built `libageos.so` rather than recompiling library sources.
+
+Run them with Meson:
+
+```bash
+meson setup libageos/build libageos --prefix=/usr/local
+meson compile -C libageos/build
+meson test -C libageos/build --print-errorlogs
+```
+
+Current coverage includes access policy, HTTP proxy, logging, hardware detection, cgroup limits, overlay/mount helpers, Landlock, scheduler state, and sandbox config validation. Full sandbox execution and the `ageos-sandbox` CLI wrapper are covered by Python integration tests under `tests/`.

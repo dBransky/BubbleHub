@@ -79,10 +79,22 @@ Before opening a pull request, run the same tests used in CI.
 
 ### Unit Tests
 
+CI runs libageos C unit tests and Python unit tests together:
+
 ```bash
 docker build -f docker/Dockerfile --target unit-test -t ageos-runtime:unit .
 docker run --rm --privileged --security-opt seccomp=unconfined ageos-runtime:unit
 ```
+
+To run only the libageos Meson tests locally:
+
+```bash
+meson setup libageos/build libageos --prefix=/usr/local
+meson compile -C libageos/build
+meson test -C libageos/build --print-errorlogs
+```
+
+C tests live under `libageos/tests/` and link against the built `libageos.so`. Mount-related overfs tests require privileges and skip automatically in unprivileged environments; CI runs them inside the privileged Docker unit-test image.
 
 ### Integration Tests
 

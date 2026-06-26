@@ -33,20 +33,4 @@ executable(
   install: true,
 )
 
-http_proxy_test = executable(
-  'ageos-http-proxy-test',
-  ['http_proxy_test.c', 'http_proxy.c', 'access_policy.c', 'log.c'],
-  include_directories: include_dir,
-  install: false,
-)
-
-test('http-proxy', http_proxy_test)
-
-access_policy_test = executable(
-  'ageos-access-policy-test',
-  ['access_policy_test.c', 'access_policy.c', 'log.c'],
-  include_directories: include_dir,
-  install: false,
-)
-
-test('access-policy', access_policy_test)
+subdir('tests')
