@@ -143,4 +143,10 @@ jobs:
 
       - name: Clean transient integration workspaces
         if: always()
-        run: rm -rf .ageos-cache/integration-workspaces
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/.ageos-cache:/cache/ageos" \
+            alpine:3.20 \
+            rm -rf /cache/ageos/integration-workspaces
+          mkdir -p .ageos-cache/integration-workspaces
+          chmod -R a+rwX .ageos-cache/integration-workspaces

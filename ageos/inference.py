@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 import yaml
@@ -47,18 +48,18 @@ def load_inference_config() -> InferenceConfig:
 def ensure_inference_endpoint(config: InferenceConfig | None = None) -> str:
     """Return the shared inference base URL, starting the daemon if needed."""
 
-    explicit = os.environ.get("AGEOS_API_BASE_URL")
-    if explicit:
-        return explicit.rstrip("/")
     resolved = config or load_inference_config()
-    if is_healthy(resolved.base_url):
-        log_debug("inference endpoint already healthy", resolved.base_url)
-        return resolved.base_url
-    log_info("starting inference daemon", resolved.base_url)
-    _start_inference_daemon(resolved)
-    wait_until_healthy(resolved.base_url)
-    log_info("inference endpoint ready", resolved.base_url)
-    return resolved.base_url
+    explicit = os.environ.get("AGEOS_API_BASE_URL")
+    base_url = explicit.rstrip("/") if explicit else resolved.base_url
+    if is_healthy(base_url):
+        log_debug("inference endpoint already healthy", base_url)
+        return base_url
+    daemon_config = _config_for_base_url(base_url, resolved)
+    log_info("starting inference daemon", base_url)
+    _start_inference_daemon(daemon_config)
+    wait_until_healthy(base_url)
+    log_info("inference endpoint ready", base_url)
+    return base_url
 
 
 def is_healthy(base_url: str) -> bool:
@@ -89,6 +90,15 @@ def apply_inference_env(env: dict[str, str], specialty: str | None = None) -> st
     env["NO_PROXY"] = _append_no_proxy(env.get("NO_PROXY", ""))
     env["no_proxy"] = _append_no_proxy(env.get("no_proxy", ""))
     return base_url
+
+
+def _config_for_base_url(base_url: str, fallback: InferenceConfig) -> InferenceConfig:
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https", ""}:
+        return fallback
+    host = parsed.hostname or fallback.host
+    port = parsed.port or fallback.port
+    return InferenceConfig(host=host, port=port, default_specialty=fallback.default_specialty)
 
 
 def _start_inference_daemon(config: InferenceConfig) -> None:

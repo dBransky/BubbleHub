@@ -36,6 +36,40 @@ def _cli_e2e_env(tmp_path: Path) -> dict[str, str]:
     return env
 
 
+def _cli_e2e_env_with_inference(tmp_path: Path) -> dict[str, str]:
+    from ageos.inference import ensure_inference_endpoint
+
+    env = _cli_e2e_env(tmp_path)
+    env.pop("AGEOS_API_BASE_URL", None)
+    endpoint = ensure_inference_endpoint()
+    env["AGEOS_API_BASE_URL"] = endpoint
+    env.setdefault("AGEOS_LLAMA_CTX_SIZE", os.environ.get("AGEOS_LLAMA_CTX_SIZE", "512"))
+    env.setdefault("AGEOS_MAX_OUTPUT_TOKENS", os.environ.get("AGEOS_MAX_OUTPUT_TOKENS", "32"))
+    return env
+
+
+def _pty_shell_root_dir(env: dict[str, str]) -> Path:
+    state_dir = Path(env.get("AGEOS_STATE_DIR", ROOT / ".ageos-state"))
+    default_root = state_dir.parent / "workspace"
+    integration_workspace_dir = env.get("AGEOS_INTEGRATION_WORKSPACE_DIR")
+    if not integration_workspace_dir:
+        return default_root
+    workspace_name = f"{state_dir.parent.parent.name}-{state_dir.parent.name}-workspace"
+    return Path(integration_workspace_dir) / workspace_name
+
+
+_SANDBOX_LLM_PROMPT = "what is two plus two? reply with one digit only"
+_SANDBOX_LLM_EXPECTED = "4"
+_PTY_FAILURE_MARKERS = (
+    "Traceback (most recent call last)",
+    "502 Server Error",
+    "sandbox inference request failed",
+    "RuntimeError:",
+    "failed to create filesystem sandbox",
+    "failed to mount AgeOS overfs",
+)
+
+
 class _QuietHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         body = b"ageos-cli-policy-ok\n"
@@ -166,6 +200,48 @@ def _run_pty_shell_access_prompt(command: list[str], env: dict[str, str], target
         _kill_pty_child(pid)
 
 
+def _run_pty_shell(
+    commands: list[str],
+    env: dict[str, str],
+    contains_strs: list[str],
+    *,
+    response_timeout: int = 120,
+) -> str:
+    _require_ageos_cli()
+    root_dir = _pty_shell_root_dir(env)
+    root_dir.mkdir(parents=True, exist_ok=True)
+    shell_command = ["ageos", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"]
+
+    pid, master_fd = pty.fork()
+    output = ""
+    if pid == 0:
+        os.chdir(ROOT)
+        os.execvpe(shell_command[0], shell_command, env)
+
+    try:
+        output = _read_pty_until(master_fd, pid, "[AgeOS]", timeout=120)
+        for typed_command, contains_str in zip(commands, contains_strs):
+            line = typed_command if typed_command.endswith("\r") else f"{typed_command}\r"
+            step_start = len(output)
+            os.write(master_fd, line.encode("utf-8"))
+            output += _read_pty_until(
+                master_fd,
+                pid,
+                contains_str,
+                timeout=response_timeout,
+                forbid=_PTY_FAILURE_MARKERS,
+                match_from=step_start,
+                initial=output,
+            )
+            step_output = output[step_start:]
+            assert contains_str in step_output, f"expected {contains_str} in response, but got {step_output}"
+        _exit_pty_shell(master_fd, pid, timeout=30)
+        return output
+    finally:
+        os.close(master_fd)
+        _kill_pty_child(pid)
+
+
 def _run_pty_shell_google_denial_prompt(command: list[str], env: dict[str, str]) -> str:
     pid, master_fd = pty.fork()
     output = ""
@@ -205,13 +281,24 @@ def _run_pty_command_access_prompt(command: list[str], env: dict[str, str], succ
         _kill_pty_child(pid)
 
 
-def _read_pty_until(master_fd: int, pid: int, needle: str, *, timeout: int) -> str:
+def _read_pty_until(
+    master_fd: int,
+    pid: int,
+    needle: str,
+    *,
+    timeout: int,
+    forbid: tuple[str, ...] = (),
+    initial: str = "",
+    match_from: int = 0,
+) -> str:
     deadline = time.monotonic() + timeout
-    output = ""
+    output = initial
     while time.monotonic() < deadline:
+        if needle in output[match_from:]:
+            return output[match_from:]
         exited = os.waitpid(pid, os.WNOHANG)
         if exited[0] == pid:
-            raise AssertionError(f"pty child exited before {needle!r}; output:\n{output}")
+            raise AssertionError(f"pty child exited before {needle!r}; output:\n{output[match_from:]}")
         readable, _, _ = select.select([master_fd], [], [], 0.1)
         if not readable:
             continue
@@ -219,14 +306,28 @@ def _read_pty_until(master_fd: int, pid: int, needle: str, *, timeout: int) -> s
             chunk = os.read(master_fd, 4096)
         except OSError as exc:
             if exc.errno == errno.EIO:
-                raise AssertionError(f"pty closed before {needle!r}; output:\n{output}") from exc
+                raise AssertionError(f"pty closed before {needle!r}; output:\n{output[match_from:]}") from exc
             raise
         if not chunk:
             continue
         output += chunk.decode("utf-8", errors="replace")
-        if needle in output:
-            return output
-    raise AssertionError(f"timed out waiting for {needle!r}; output:\n{output}")
+        for marker in forbid:
+            if marker in output[match_from:]:
+                raise AssertionError(f"pty output contained failure marker {marker!r}; output:\n{output[match_from:]}")
+        if needle in output[match_from:]:
+            return output[match_from:]
+    raise AssertionError(f"timed out waiting for {needle!r}; output:\n{output[match_from:]}")
+
+
+def _exit_pty_shell(master_fd: int, pid: int, *, timeout: int = 30) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        os.write(master_fd, b"exit\r")
+        while time.monotonic() < deadline:
+            exited = os.waitpid(pid, os.WNOHANG)
+            if exited[0] == pid:
+                return
+            time.sleep(0.2)
 
 
 def _wait_pty_child(pid: int, *, timeout: int) -> None:
@@ -484,3 +585,37 @@ def test_ageos_host_cli_tools_e2e(command: list[str], expected: str, tmp_path: P
     result = _run_cli_e2e(command, tmp_path=tmp_path)
 
     assert expected in result.stdout
+
+
+@pytest.mark.integration
+@pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
+def test_sandbox_prompt_e2e(tmp_path: Path) -> None:
+    commands = [f"ageos prompt --text '{_SANDBOX_LLM_PROMPT}'"]
+    expected = [_SANDBOX_LLM_EXPECTED]
+    _run_pty_shell(
+        commands,
+        _cli_e2e_env_with_inference(tmp_path),
+        expected,
+        response_timeout=300,
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
+def test_sandbox_poc_e2e(tmp_path: Path) -> None:
+    commands = ["ageos poc"]
+    expected = ["ageos>"]
+    _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
+def test_sandbox_ps_blocked_inside_sandbox(tmp_path: Path) -> None:
+    commands = ["ageos ps"]
+    expected = ["only available to the real host user"]
+    _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
+def test_sandbox_dashboard_blocked_inside_sandbox(tmp_path: Path) -> None:
+    commands = ["ageos dashboard"]
+    expected = ["only available to the real host user"]
+    _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)

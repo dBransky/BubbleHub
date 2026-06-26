@@ -39,12 +39,37 @@ inference:
 def test_apply_inference_env_sets_openai_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGEOS_API_BASE_URL", "http://127.0.0.1:8000")
     env: dict[str, str] = {}
-    base_url = apply_inference_env(env, "code-review")
+    with patch("ageos.inference.is_healthy", return_value=True):
+        base_url = apply_inference_env(env, "code-review")
     assert base_url == "http://127.0.0.1:8000"
     assert env["AGEOS_API_BASE_URL"] == "http://127.0.0.1:8000"
     assert env["OPENAI_BASE_URL"] == "http://127.0.0.1:8000/v1"
     assert env["OPENAI_API_KEY"] == "ageos-local"
     assert env["AGEOS_SPECIALITY"] == "code-review"
+
+
+def test_ensure_inference_endpoint_checks_explicit_api_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGEOS_API_BASE_URL", "http://127.0.0.1:8123")
+    config = InferenceConfig(host="127.0.0.1", port=8000, default_specialty="default-instruct")
+    with patch("ageos.inference.is_healthy", return_value=True) as healthy:
+        with patch("ageos.inference._start_inference_daemon") as start:
+            assert ensure_inference_endpoint(config) == "http://127.0.0.1:8123"
+    healthy.assert_called_once_with("http://127.0.0.1:8123")
+    start.assert_not_called()
+
+
+def test_ensure_inference_endpoint_starts_daemon_for_unhealthy_explicit_api_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGEOS_API_BASE_URL", "http://127.0.0.1:8123")
+    config = InferenceConfig(host="127.0.0.1", port=8000, default_specialty="default-instruct")
+    with patch("ageos.inference.is_healthy", side_effect=[False, True]) as healthy:
+        with patch("ageos.inference._start_inference_daemon") as start:
+            with patch("ageos.inference.wait_until_healthy") as wait:
+                assert ensure_inference_endpoint(config) == "http://127.0.0.1:8123"
+    healthy.assert_called()
+    start.assert_called_once_with(InferenceConfig(host="127.0.0.1", port=8123, default_specialty="default-instruct"))
+    wait.assert_called_once_with("http://127.0.0.1:8123")
 
 
 def test_ensure_inference_endpoint_reuses_healthy_server() -> None:
