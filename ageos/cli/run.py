@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 import typer
 
+from ageos.app.agents import normalize_agent_name, write_agent_metadata
 from ageos.inference import apply_inference_env
 from ageos.log import log_debug, log_error, log_info
 from ageos.node.client import SchedulerClient
@@ -43,6 +44,7 @@ _SANDBOX_SYSTEM_PREFIXES = (
 def command(
     ctx: typer.Context,
     binary: str = typer.Option(..., "--binary", help="Agent binary path or command name."),
+    name: str | None = typer.Option(None, "--name", help="Human-friendly name shown in ps, shell prompt, and the desktop app."),
     niceness: int = typer.Option(0, "--niceness", min=-20, max=19, help="AgeOS GPU/memory priority."),
     memory: str = typer.Option("2G", "--memory", help="Sandbox memory limit."),
     cpu: int = typer.Option(0, "--cpu", help="Optional cgroup CPU percent cap."),
@@ -73,6 +75,7 @@ def command(
     run_agent(
         binary=binary,
         extra_args=list(ctx.args),
+        name=name,
         niceness=niceness,
         memory=memory,
         cpu=cpu,
@@ -90,6 +93,7 @@ def run_agent(
     *,
     binary: str,
     extra_args: list[str],
+    name: str | None = None,
     niceness: int,
     memory: str,
     cpu: int,
@@ -108,6 +112,7 @@ def run_agent(
     rootfs_dir = _resolve_rootfs_dir()
     cwd_path = sandbox_paths.host_workdir
     resolved_binary = _resolve_binary(binary, cwd_path)
+    agent_name = normalize_agent_name(name)
     persistent = _select_persistent_sandbox(sandbox_paths.host_root_dir, force_new=force_new_sandbox)
     agent_id = client.register_agent(
         str(resolved_binary),
@@ -116,6 +121,13 @@ def run_agent(
         agent_id=persistent.agent_id,
     )
     _record_persistent_sandbox(sandbox_paths.host_root_dir, agent_id)
+    write_agent_metadata(
+        agent_id,
+        name=agent_name,
+        root_dir=sandbox_paths.host_root_dir,
+        workdir=str(cwd_path),
+        binary=str(resolved_binary),
+    )
     if persistent.reused:
         log_info("reusing persistent sandbox", agent_id)
         typer.echo(f"Persistent sandbox found: reusing {agent_id}")
@@ -136,6 +148,8 @@ def run_agent(
     overlay_paths = _prepare_overlay_paths(sandbox_paths.host_root_dir, agent_id, rootfs_dir)
     env = dict()
     env["AGEOS_AGENT_ID"] = agent_id
+    if agent_name is not None:
+        env["AGEOS_AGENT_NAME"] = agent_name
     env["AGEOS_NICENESS"] = str(niceness)
     env["AGEOS_HOST_UID"] = str(os.getuid())
     env["AGEOS_HOST_GID"] = str(os.getgid())

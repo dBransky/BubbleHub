@@ -20,7 +20,16 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       debootstrap \
       gcovr \
       git \
+      libatk1.0-dev \
+      libayatana-appindicator3-dev \
+      libcairo2-dev \
+      libgdk-pixbuf-2.0-dev \
+      libgtk-3-dev \
+      libpango1.0-dev \
+      librsvg2-dev \
       libseccomp-dev \
+      libssl-dev \
+      libxdo-dev \
       meson \
       ninja-build \
       pkg-config \
@@ -30,10 +39,19 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
       python3-venv \
       sudo \
       xz-utils && \
+    WEBKIT_GTK_PACKAGE="libwebkit2gtk-4.1-dev" && \
+    if ! apt-cache show "$WEBKIT_GTK_PACKAGE" >/dev/null 2>&1; then WEBKIT_GTK_PACKAGE="libwebkit2gtk-4.0-dev"; fi && \
+    apt-get install -y --no-install-recommends "$WEBKIT_GTK_PACKAGE" && \
     rm -rf /var/lib/apt/lists/*
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m pip install --upgrade pip setuptools wheel
+
+COPY scripts/install-rust.sh /tmp/install-rust.sh
+RUN bash /tmp/install-rust.sh && rm /tmp/install-rust.sh
+
+ENV PATH="/root/.cargo/bin:${PATH}" \
+    CARGO_HTTP_MULTIPLEXING=false
 
 WORKDIR /src
 
@@ -56,9 +74,25 @@ FROM base AS source
 
 COPY . /src
 
+FROM base AS tauri-app
+
+COPY scripts/ci/build-tauri-app.sh scripts/ci/build-tauri-app.sh
+COPY app/ app/
+
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/src/app/target \
+    ./scripts/ci/build-tauri-app.sh && \
+    install -D app/target/release/ageos-control-center /out/ageos-control-center
+
 FROM source AS unit-test
 
 ARG MESON_COVERAGE=false
+
+RUN --mount=type=cache,target=/root/.cargo/registry \
+    --mount=type=cache,target=/root/.cargo/git \
+    --mount=type=cache,target=/src/app/target \
+    TAURI_RUN_TESTS=1 ./scripts/ci/build-tauri-app.sh
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m pip install ".[dev]" && \
@@ -83,10 +117,12 @@ RUN SUDO= /src/scripts/create-rootfs.sh
 FROM rootfs AS runtime
 
 COPY . /src
+COPY --from=tauri-app /out/ageos-control-center /usr/local/bin/ageos-control-center
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    SUDO= ./scripts/build.sh && \
-    ageos --help
+    AGEOS_INSTALL_APP=1 AGEOS_SKIP_TAURI=1 SUDO= ./scripts/build.sh && \
+    ageos --help && \
+    command -v ageos-control-center
 
 CMD ["ageos", "--help"]
 

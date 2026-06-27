@@ -1,0 +1,22 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "AgeOS Control Center",
+  "version": "0.1.0",
+  "identifier": "com.ageos.controlcenter",
+  "build": {
+    "frontendDist": "static"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "Monitor AgeOS agents, resources, and models",
+    "longDescription": "AgeOS Control Center is a desktop app for monitoring running agents, RAM and VRAM usage, manifests, and local models."
+  }
+}

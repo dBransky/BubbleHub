@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 import pytest
 import typer
 
+from ageos.app.agents import read_agent_metadata
 from ageos.cli.run import _can_prompt_for_access, _resolve_rootfs_dir, _resolve_sandbox_paths, run_agent
 
 
@@ -54,6 +55,40 @@ def test_run_agent_uses_native_inference_only_network(monkeypatch: pytest.Monkey
     assert captured_env["https_proxy"] == "http://127.0.0.1:18080"
     assert "127.0.0.1" in captured_env["NO_PROXY"].split(",")
     assert "localhost" in captured_env["NO_PROXY"].split(",")
+
+
+def test_run_agent_records_display_name_and_exports_prompt_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AGEOS_DISABLE_ROOTFS", "1")
+    monkeypatch.setenv("AGEOS_STATE_DIR", str(tmp_path / "state"))
+    client = Mock()
+    client.register_agent.return_value = "agt-named"
+    captured_env: dict[str, str] = {}
+
+    def run_sandbox(*_args: object, **_kwargs: object) -> int:
+        captured_env.update(os.environ)
+        return 0
+
+    client.native.run_sandbox.side_effect = run_sandbox
+
+    with (
+        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
+        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+    ):
+        with pytest.raises(typer.Exit) as exc:
+            run_agent(
+                binary="/bin/true",
+                extra_args=[],
+                name="research shell",
+                niceness=0,
+                memory="2G",
+                cpu=0,
+                speciality="default-instruct",
+                workdir=None,
+            )
+
+    assert exc.value.exit_code == 0
+    assert captured_env["AGEOS_AGENT_NAME"] == "research shell"
+    assert read_agent_metadata("agt-named")["name"] == "research shell"
 
 
 def test_run_access_prompt_requires_interactive_stdin_and_stdout() -> None:

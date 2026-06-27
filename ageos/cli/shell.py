@@ -12,6 +12,7 @@ from ageos.log import log_info
 
 def command(
     ctx: typer.Context,
+    name: str | None = typer.Option(None, "--name", help="Human-friendly name shown in ps, shell prompt, and the desktop app."),
     memory: str = typer.Option("2G", "--memory", help="Sandbox memory limit."),
     cpu: int = typer.Option(0, "--cpu", help="Optional cgroup CPU percent cap."),
     speciality: str | None = typer.Option(None, "--speciality", "--specialty", help="Default model specialty."),
@@ -45,6 +46,7 @@ def command(
     run_agent(
         binary=shell,
         extra_args=args,
+        name=name,
         niceness=0,
         memory=memory,
         cpu=cpu,

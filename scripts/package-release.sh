@@ -33,10 +33,12 @@ build_deb() {
     "$pkg_root/DEBIAN" \
     "$pkg_root/opt" \
     "$pkg_root/usr/bin" \
-    "$pkg_root/usr/lib/x86_64-linux-gnu"
+    "$pkg_root/usr/lib/x86_64-linux-gnu" \
+    "$pkg_root/usr/share/applications" \
+    "$pkg_root/usr/share/icons/hicolor/512x512/apps"
 
   docker cp "$container_id:/opt/ageos" "$pkg_root/opt/ageos"
-  for binary in ageos ageos-node ageos-sandbox llama-server; do
+  for binary in ageos ageos-node ageos-sandbox ageos-control-center llama-server; do
     docker cp "$container_id:/usr/local/bin/${binary}" "$pkg_root/usr/bin/${binary}"
   done
   docker cp "$container_id:/usr/local/lib/x86_64-linux-gnu/." "$pkg_root/usr/lib/x86_64-linux-gnu/"
@@ -50,7 +52,7 @@ Section: devel
 Priority: optional
 Architecture: amd64
 Maintainer: AgeOS <hello@ageos-labs.com>
-Depends: python3, libc6, libstdc++6, libgcc-s1, libgomp1, libseccomp2
+Depends: python3, libwebkit2gtk-4.1-0 | libwebkit2gtk-4.0-37, libayatana-appindicator3-1, libgtk-3-0, libxdo3, librsvg2-2, libc6, libstdc++6, libgcc-s1, libgomp1, libseccomp2
 Description: Local LLM serving and sandboxed agents
  AgeOS bundles local model serving, sandboxed agent execution, and local
  scheduling into one runtime.
@@ -74,6 +76,20 @@ fi
 EOF
   chmod 0755 "$pkg_root/DEBIAN/postrm"
 
+  cat > "$pkg_root/usr/share/applications/ageos-control-center.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=AgeOS Control Center
+Comment=Monitor AgeOS agents, memory, manifests, and loaded models
+Exec=ageos app
+Icon=ageos-control-center
+Terminal=false
+Categories=Development;System;Monitor;
+StartupNotify=true
+EOF
+
+  cp "$pkg_root/opt/ageos/share/ageos/app/icons/ageos-icon.png" "$pkg_root/usr/share/icons/hicolor/512x512/apps/ageos-control-center.png"
+
   dpkg-deb --root-owner-group --build "$pkg_root" "$OUTPUT_DIR/${PACKAGE_NAME}.deb"
 }
 
@@ -95,7 +111,7 @@ RequestExecutionLevel user
 ShowInstDetails show
 
 Section "Install AgeOS"
-  DetailPrint "Installing AgeOS ${VERSION_TAG} through PowerShell and WSL..."
+  DetailPrint "Installing AgeOS ${VERSION_TAG} runtime and Control Center through PowerShell and WSL..."
   StrCpy \$0 "\$TEMP\\ageos-install.ps1"
   FileOpen \$1 "\$0" w
   FileWrite \$1 "\$\$ErrorActionPreference = 'Stop'\$\r\$\n"

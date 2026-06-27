@@ -456,6 +456,30 @@ def test_ageos_run_prompts_for_access_when_terminal_is_interactive(tmp_path: Pat
     assert "AgeOS proxy denied the request" not in output
 
 
+@pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
+def test_ageos_shell_name_appears_in_prompt(tmp_path: Path) -> None:
+    _require_ageos_cli()
+    root_dir = tmp_path / "named-shell-workspace"
+    root_dir.mkdir()
+    env = _cli_e2e_env(tmp_path)
+    command = ["ageos", "shell", "--name", "researcher", "--root-dir", str(root_dir), "--force-new-sandbox"]
+    pid, master_fd = pty.fork()
+    output = ""
+    if pid == 0:
+        os.chdir(ROOT)
+        os.execvpe(command[0], command, env)
+
+    try:
+        output = _read_pty_until(master_fd, pid, "[AgeOS researcher]", timeout=120)
+        os.write(master_fd, b"exit\r")
+        _wait_pty_child(pid, timeout=30)
+    finally:
+        os.close(master_fd)
+        _kill_pty_child(pid)
+
+    assert "[AgeOS researcher]" in output
+
+
 def test_ageos_run_pending_access_can_be_resolved_from_dashboard_cli(tmp_path: Path) -> None:
     _require_ageos_cli()
     root_dir = tmp_path / "run-dashboard-workspace"
@@ -610,6 +634,13 @@ def test_sandbox_poc_e2e(tmp_path: Path) -> None:
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_ps_blocked_inside_sandbox(tmp_path: Path) -> None:
     commands = ["ageos ps"]
+    expected = ["only available to the real host user"]
+    _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
+def test_sandbox_app_blocked_inside_sandbox(tmp_path: Path) -> None:
+    commands = ["ageos app"]
     expected = ["only available to the real host user"]
     _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)
 

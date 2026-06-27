@@ -52,6 +52,16 @@ def test_shell_command_enables_interactive_access_broker() -> None:
     assert run.call_args.kwargs["interactive_access"] is True
 
 
+def test_shell_command_passes_agent_name() -> None:
+    ctx = Mock()
+    ctx.args = []
+
+    with patch("ageos.cli.shell.run_agent") as run:
+        command(ctx, name="reviewer")
+
+    assert run.call_args.kwargs["name"] == "reviewer"
+
+
 def test_shell_with_root_dir_allows_system_shell_binary(tmp_path: Path) -> None:
     client = Mock()
     client.register_agent.return_value = "agt-test"

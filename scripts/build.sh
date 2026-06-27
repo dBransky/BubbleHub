@@ -4,6 +4,15 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+. "$ROOT/scripts/install-ui.sh"
+AGEOS_INSTALL_APP="$(ageos_resolve_desktop_app_choice)"
+export AGEOS_INSTALL_APP
+if [[ "$AGEOS_INSTALL_APP" == "1" ]]; then
+  export AGEOS_SKIP_TAURI=0
+else
+  export AGEOS_SKIP_TAURI=1
+fi
+
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 INSTALL_PREFIX="${AGEOS_PREFIX:-/opt/ageos}"
 BIN_DIR="${AGEOS_BIN_DIR:-/usr/local/bin}"
@@ -146,6 +155,16 @@ ${SUDO} chmod 0755 "$BIN_DIR/ageos-node"
 ${SUDO} ln -sf "$INSTALL_PREFIX/bin/pytest" "$BIN_DIR/pytest"
 if [[ -x /usr/local/bin/ageos-sandbox && "$BIN_DIR/ageos-sandbox" != "/usr/local/bin/ageos-sandbox" ]]; then
   ${SUDO} ln -sf /usr/local/bin/ageos-sandbox "$BIN_DIR/ageos-sandbox"
+fi
+
+if [[ "${AGEOS_INSTALL_APP:-1}" != "0" && "${AGEOS_SKIP_TAURI:-0}" != "1" ]]; then
+  if ! command -v cargo >/dev/null 2>&1; then
+    echo "cargo not found. Run ./scripts/install-deps.sh first or set AGEOS_SKIP_TAURI=1." >&2
+    exit 1
+  fi
+  echo "Building AgeOS Control Center Tauri desktop app..."
+  "$ROOT/scripts/ci/build-tauri-app.sh"
+  ${SUDO} install -m 0755 "$ROOT/app/target/release/ageos-control-center" "$BIN_DIR/ageos-control-center"
 fi
 
 if [[ "${AGEOS_SKIP_ROOTFS:-0}" == "1" ]]; then

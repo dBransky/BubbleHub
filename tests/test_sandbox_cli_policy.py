@@ -4,8 +4,16 @@ from unittest.mock import patch
 import pytest
 import typer
 
+from ageos.cli import app as app_cmd
 from ageos.cli import dashboard, ps
 from ageos.cli import main as cli_main
+
+
+def test_app_is_denied_inside_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("AGEOS_SANDBOX", raising=False)
+    with patch("ageos.cli.app.is_sandboxed", return_value=True):
+        with pytest.raises(typer.BadParameter):
+            app_cmd.command()
 
 
 def test_dashboard_is_denied_inside_sandbox(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -50,6 +58,6 @@ def test_models_list_is_allowed_inside_sandbox(monkeypatch: pytest.MonkeyPatch) 
         patch("ageos.cli.main.ModelRegistry.load_default", return_value=registry),
         patch("ageos.cli.main.detect_hardware", return_value=hardware),
         patch("ageos.cli.main.select_tier", return_value=tier),
-        patch("ageos.cli.main._selected_model_name", return_value=None),
+        patch("ageos.cli.main.selected_model_name", return_value=None),
     ):
         cli_main.models_list(speciality="default-instruct")

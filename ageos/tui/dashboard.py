@@ -11,6 +11,7 @@ from rich.progress import BarColumn, Progress, TextColumn
 from rich.prompt import Prompt
 from rich.table import Table
 
+from ageos.app.telemetry import control_snapshot
 from ageos.node.client import SchedulerClient
 
 
@@ -74,14 +75,13 @@ def _manifest_scope_for_pending(item: dict[str, Any]) -> tuple[str, str]:
 
 
 def _render() -> Group:
-    snapshot = SchedulerClient.local().telemetry_snapshot()
-    hardware = snapshot["hardware"]  # type: ignore[index]
-    limits = snapshot.get("limits", {})
-    ram_total = _limit_or_hardware(limits, hardware, "ram_bytes")
-    vram_total = _limit_or_hardware(limits, hardware, "vram_bytes")
+    snapshot = control_snapshot()
+    memory = snapshot["memory"] if isinstance(snapshot["memory"], dict) else {}
     models = snapshot["models"]  # type: ignore[index]
-    ram_used = _actual_ram_used_bytes(ram_total)
-    vram_used = _actual_vram_used_bytes(hardware, vram_total, models)
+    ram_total = _int_or_zero(memory.get("ram_total_bytes"))
+    ram_used = _int_or_zero(memory.get("ram_used_bytes"))
+    vram_total = _int_or_zero(memory.get("vram_total_bytes"))
+    vram_used = _int_or_zero(memory.get("vram_used_bytes"))
 
     return Group(
         Panel(_bars(ram_total, ram_used, "RAM", snapshot["memory_pressure"]), title="AgeOS Memory"),
@@ -171,10 +171,23 @@ def _format_bytes(value: int) -> str:
 
 def _agents_table(agents: list[dict[str, object]]) -> Table:
     table = Table(title="Agents")
-    for column in ["agent_id", "binary", "status", "niceness", "specialty"]:
+    for column in ["state", "name", "agent_id", "binary", "status", "niceness", "specialty", "pid", "rss", "cpu_time"]:
         table.add_column(column)
     for item in agents:
-        table.add_row(*(str(item.get(column, "")) for column in ["agent_id", "binary", "status", "niceness", "specialty"]))
+        running = bool(item.get("running"))
+        state = "[green]●[/green]" if running else "[red]●[/red]"
+        table.add_row(
+            state,
+            str(item.get("display_name", item.get("name", ""))),
+            str(item.get("agent_id", "")),
+            str(item.get("binary", "")),
+            str(item.get("status", "")),
+            str(item.get("niceness", "")),
+            str(item.get("specialty", "")),
+            str(item.get("pid", "")),
+            _format_bytes(_int_or_zero(item.get("rss_bytes"))),
+            f"{float(item.get('cpu_time_seconds', 0)):g}s",
+        )
     return table
 
 
@@ -191,7 +204,7 @@ def _models_table(models: list[dict[str, object]]) -> Table:
             str(item.get("specialty", "")),
             f"{float(item.get('ram_gb', 0)):g}G",
             f"{float(item.get('vram_gb', 0)):g}G",
-            _format_bytes(_rss_bytes(pid)),
+            _format_bytes(_int_or_zero(item.get("rss_bytes")) or _rss_bytes(pid)),
             str(item.get("pid", "")),
             str(item.get("port", "")),
             str(item.get("refcount", "")),

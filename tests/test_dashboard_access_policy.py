@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 from rich.console import Console
 
-from ageos.tui.dashboard import _manifest_scope_for_pending, _pending_access_label, _resolve_pending_access
+from ageos.tui.dashboard import _agents_table, _manifest_scope_for_pending, _pending_access_label, _resolve_pending_access
 
 
 def test_pending_access_label_includes_agent_method_and_target() -> None:
@@ -83,3 +83,30 @@ def test_resolve_pending_access_ask_submits_manifest_policy() -> None:
 
 def test_manifest_scope_for_non_http_pending_keeps_exact_request() -> None:
     assert _manifest_scope_for_pending({"kind": "mcp", "method": "tool", "path": "search"}) == ("tool", "search")
+
+
+def test_agents_table_renders_running_and_stopped_leds() -> None:
+    table = _agents_table(
+        [
+            {
+                "agent_id": "agt-run",
+                "display_name": "runner",
+                "binary": "/bin/bash",
+                "status": "running",
+                "running": True,
+                "pid": 123,
+            },
+            {
+                "agent_id": "agt-stop",
+                "display_name": "stopped reviewer",
+                "binary": "/bin/bash",
+                "status": "stopped",
+                "running": False,
+                "pid": 0,
+            },
+        ]
+    )
+
+    assert table.columns[0]._cells == ["[green]●[/green]", "[red]●[/red]"]
+    assert table.columns[1]._cells == ["runner", "stopped reviewer"]
+    assert table.columns[4]._cells == ["running", "stopped"]

@@ -49,10 +49,17 @@ curl -LO https://ageos.dev/download/latest/AgeOS-X.Y.Z-x64.deb
 sudo apt install ./AgeOS-X.Y.Z-x64.deb
 ```
 
+Open the AgeOS Control Center Tauri desktop app after installing:
+```bash
+ageos app
+```
+
 Windows PowerShell installer:
 ```powershell
 irm https://ageos.dev/install.ps1 | iex
 ```
+
+The Windows installer uses WSL for the Linux runtime and creates AgeOS Control Center Start Menu and Desktop shortcuts that launch the desktop app.
 
 Windows `.exe` bootstrapper:
 ```powershell

@@ -164,10 +164,15 @@ docker run --rm --privileged --security-opt seccomp=unconfined \
     command -v ageos >/dev/null
     command -v ageos-node >/dev/null
     command -v ageos-sandbox >/dev/null
+    command -v ageos-control-center >/dev/null
     command -v llama-server >/dev/null
     test -d /opt/ageos
     ageos --help >/dev/null
+    ageos app --help >/dev/null
     test -x /usr/bin/ageos-node
+    test -x /usr/bin/ageos-control-center
+    test -f /usr/share/applications/ageos-control-center.desktop
+    test -f /usr/share/icons/hicolor/512x512/apps/ageos-control-center.png
   '
 
 echo "Validating Windows bootstrapper .exe..."
@@ -182,6 +187,10 @@ if ! file "$EXE" | grep -Eiq 'PE32|PE32\+'; then
 fi
 if ! strings "$EXE" | grep -q 'AgeOS'; then
   echo "Windows bootstrapper does not contain expected AgeOS branding." >&2
+  exit 1
+fi
+if ! strings "$EXE" | grep -q 'Control Center'; then
+  echo "Windows bootstrapper does not contain expected Control Center branding." >&2
   exit 1
 fi
 

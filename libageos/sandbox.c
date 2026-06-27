@@ -44,6 +44,8 @@
 
 #define AGEOS_AGENT_UID_BASE 60000U
 #define AGEOS_AGENT_UID_SPAN 4000U
+#define AGEOS_PROMPT_LABEL_SIZE 64
+#define AGEOS_PROMPT_SIZE 512
 
 extern int ageos_landlock_apply_filesystem(const char *writable_dir, int allow_dns);
 
@@ -78,6 +80,32 @@ static void log_capability_state(const char *stage) {
 
 static int apply_no_new_privs(void) {
     return prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+}
+
+static void sanitize_prompt_label(const char *src, char *dst, size_t dst_size) {
+    if (dst_size == 0) {
+        return;
+    }
+    const char prefix[] = "AgeOS ";
+    if (src == NULL || src[0] == '\0') {
+        snprintf(dst, dst_size, "AgeOS");
+        return;
+    }
+
+    size_t out = 0;
+    for (size_t i = 0; prefix[i] != '\0' && out + 1 < dst_size; i++) {
+        dst[out++] = prefix[i];
+    }
+    for (const unsigned char *p = (const unsigned char *)src; *p != '\0' && out + 1 < dst_size; p++) {
+        if ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '_' || *p == '-' || *p == '.' || *p == ' ') {
+            dst[out++] = (char)*p;
+        }
+    }
+    if (out == strlen(prefix)) {
+        snprintf(dst, dst_size, "AgeOS");
+        return;
+    }
+    dst[out] = '\0';
 }
 
 static int grant_net_raw_capability(void) {
@@ -1320,11 +1348,17 @@ static int setup_sandbox_home(
     setenv("LANG", "en_US.UTF-8", 1);
     setenv("LANGUAGE", "en_US.UTF-8", 1);
     setenv("TERM", "xterm-256color", 1);
-    setenv("PS1",
-           "\\[\\e[1;35m\\][AgeOS]\\[\\e[0m\\] "
-           "\\[\\e[1;32m\\]\\u\\[\\e[0m\\] "
-           "\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ ",
-           1);
+    char prompt_label[AGEOS_PROMPT_LABEL_SIZE];
+    char ps1[AGEOS_PROMPT_SIZE];
+    sanitize_prompt_label(getenv("AGEOS_AGENT_NAME"), prompt_label, sizeof(prompt_label));
+    snprintf(
+        ps1,
+        sizeof(ps1),
+        "\\[\\e[1;35m\\][%s]\\[\\e[0m\\] "
+        "\\[\\e[1;36m\\]\\u\\[\\e[0m\\] "
+        "\\[\\e[1;34m\\]\\w\\[\\e[0m\\]\\$ ",
+        prompt_label);
+    setenv("PS1", ps1, 1);
     setenv("AGEOS_AGENT_HOME", visible_home_path, 1);
     setenv("AGEOS_WORKSPACE", visible_workspace_path, 1);
     return setup_sandbox_identity_files(identity_agent_dir, target_root, agent_name, visible_home_path, agent_uid, agent_gid);

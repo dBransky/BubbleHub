@@ -28,12 +28,28 @@ irm https://ageos.dev/install.ps1 | iex
 ```
 
 The installer downloads the latest GitHub Release artifact, installs local runtime dependencies, builds AgeOS, and creates the Ubuntu 26.04 sandbox filesystem.
+When you install from the CLI script, AgeOS asks whether to install the Tauri desktop app as well or keep the install CLI-only. You can skip
+it and install it later with `ageos app`.
+On Windows it checks for WSL2 and an installed Linux distro, installs AgeOS inside WSL, then creates Start Menu and Desktop shortcuts for
+**AgeOS Control Center** when the desktop app is selected. The shortcuts launch the Tauri desktop app through WSL/WSLg. If no distro exists,
+run `wsl --install -d Ubuntu`, complete Ubuntu setup, and rerun the installer.
+Set `AGEOS_INSTALL_WSL=1` before running the installer to let it attempt the elevated WSL install step for you.
 
 Check it:
 
 ```bash
 ageos --help
 ```
+
+Open the graphical Control Center:
+
+```bash
+ageos app
+```
+
+`ageos app` starts the AgeOS Control Center as a Tauri desktop app backed by a host-only localhost API. It shows RAM/VRAM usage,
+loaded models with model-family logos, scheduler queue, running agents, sandbox access manifests, and base-model selection. The Agents tab can stop
+an agent process or delete its persistent sandbox. Use `ageos app --server-only` only for diagnostics/headless API checks.
 
 Docker image:
 
@@ -61,6 +77,13 @@ Run an agent in the sandbox:
 ageos run --root-dir ./examples/basic --binary ./examples/basic/basic_agent.py --memory 16G
 ```
 
+Name an agent for `ageos ps`, the shell prompt, and the Control Center:
+
+```bash
+ageos shell --name reviewer --root-dir ./workspace
+ageos ps --kill agt-...
+```
+
 Start the OpenAI-compatible local endpoint (optional):
 
 ```bash
@@ -75,6 +98,12 @@ ageos models list
 ageos models stop
 ```
 
+Open the Task Manager-style GUI:
+
+```bash
+ageos app
+```
+
 ## What AgeOS Does
 
 - Runs local LLMs.
@@ -82,6 +111,7 @@ ageos models stop
 - Keeps warm model backends shared across agents.
 - Runs agents in a Linux sandbox with restricted filesystem and network access.
 - Injects local inference into agents as `OPENAI_BASE_URL` and `OPENAI_API_KEY`.
+- Provides the AgeOS Control Center desktop app for graphical monitoring, manifest review, and base-model selection.
 
 ## Agent Environment
 

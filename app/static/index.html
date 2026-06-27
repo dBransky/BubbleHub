@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgeOS</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <img class="brand-mark" src="/icons/ageos-icon.png" alt="AgeOS">
+        <div>
+          <strong>AgeOS</strong>
+          <span>Control Center</span>
+        </div>
+      </div>
+      <nav class="tabs" aria-label="AgeOS views">
+        <button data-tab="resources" class="active">Resources</button>
+        <button data-tab="agents">Agents</button>
+        <button data-tab="models">Models</button>
+      </nav>
+      <div class="sidebar-footer">
+        <span id="healthDot"></span>
+        <span id="health">Connecting</span>
+      </div>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Local Runtime</p>
+          <h1>AgeOS Control Center</h1>
+        </div>
+      </header>
+
+      <section class="resource-strip">
+        <article class="resource-card ram-card">
+          <div>
+            <span>RAM</span>
+            <strong id="ramPercent">0%</strong>
+          </div>
+          <div class="meter"><i id="ramMeter"></i></div>
+          <small id="ramBytes">0 GiB / 0 GiB</small>
+        </article>
+        <article class="resource-card vram-card">
+          <div>
+            <span>VRAM</span>
+            <strong id="vramPercent">0%</strong>
+          </div>
+          <div class="meter"><i id="vramMeter"></i></div>
+          <small id="vramBytes">0 GiB / 0 GiB</small>
+        </article>
+      </section>
+
+      <section id="resources" class="tab-panel active">
+        <div class="grid two">
+          <article class="panel">
+            <div class="panel-heading">
+              <h2>Loaded Models</h2>
+              <span id="modelCount">0</span>
+            </div>
+            <div id="resourceModelRows" class="rows"></div>
+          </article>
+          <article class="panel">
+            <div class="panel-heading">
+              <h2>Queue</h2>
+              <span id="queueCount">0</span>
+            </div>
+            <div id="queueRows" class="rows compact"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="agents" class="tab-panel">
+        <div class="grid agents-layout">
+          <article class="panel">
+            <div class="panel-heading">
+              <h2>Agents</h2>
+              <span>click to inspect</span>
+            </div>
+            <div id="agentList" class="rows"></div>
+            <h3>Pending Access</h3>
+            <div id="pendingRequests" class="rows compact"></div>
+          </article>
+          <article class="panel manifest-panel">
+            <div class="panel-heading">
+              <h2 id="manifestTitle">Manifest</h2>
+              <span id="manifestSubtitle">select an agent</span>
+            </div>
+            <div id="manifestDetail" class="manifest-empty">Select an agent to review its sandbox manifest.</div>
+          </article>
+        </div>
+      </section>
+
+      <section id="models" class="tab-panel">
+        <article class="panel">
+          <div class="panel-heading">
+            <h2>Models</h2>
+            <span id="selectedModel">selected model unknown</span>
+          </div>
+          <div id="modelCatalog" class="model-grid"></div>
+        </article>
+      </section>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

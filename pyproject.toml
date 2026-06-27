@@ -80,11 +80,44 @@ ageos = ["config/*.yaml"]
   "libageos/include/ageos/sandbox.h",
 ]
 "share/ageos/scripts" = [
+  "scripts/install-app-deps.sh",
+  "scripts/install-rust.sh",
+  "scripts/install-ui.sh",
   "scripts/build.sh",
   "scripts/create-rootfs.sh",
   "scripts/install.ps1",
   "scripts/install.sh",
   "scripts/install-deps.sh",
+]
+"share/ageos/app/static" = [
+  "app/static/app.js",
+  "app/static/index.html",
+  "app/static/style.css",
+]
+"share/ageos/app" = [
+  "app/Cargo.lock",
+  "app/Cargo.toml",
+  "app/build.rs",
+  "app/rust-toolchain.toml",
+  "app/tauri.conf.json",
+]
+"share/ageos/app/icons" = [
+  "app/icons/ageos-icon.png",
+  "app/icons/32x32.png",
+  "app/icons/128x128.png",
+  "app/icons/128x128@2x.png",
+  "app/icons/icon.png",
+]
+"share/ageos/app/icons/models" = [
+  "app/icons/models/mistral.svg",
+  "app/icons/models/nvidia.svg",
+  "app/icons/models/qwen.svg",
+]
+"share/ageos/app/src" = [
+  "app/src/main.rs",
+]
+"share/ageos/app/capabilities" = [
+  "app/capabilities/default.json",
 ]
 
 [tool.pytest.ini_options]

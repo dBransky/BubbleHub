@@ -1,0 +1,14 @@
+{
+  "name": "ageos-control-center",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "tauri": "tauri --config app/tauri.conf.json",
+    "app:dev": "tauri dev --config app/tauri.conf.json",
+    "app:build": "tauri build --config app/tauri.conf.json"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

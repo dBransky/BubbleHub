@@ -41,6 +41,16 @@ mkdir -p "$SRC_DIR"
 tar -xzf "$ARCHIVE" -C "$SRC_DIR" --strip-components=1
 
 cd "$SRC_DIR"
+. ./scripts/install-ui.sh
+AGEOS_INSTALL_APP="$(ageos_resolve_desktop_app_choice)"
+export AGEOS_INSTALL_APP
+if [[ "$AGEOS_INSTALL_APP" == "1" ]]; then
+  export AGEOS_SKIP_TAURI=0
+  echo "Desktop app selected: AgeOS Control Center will be installed."
+else
+  export AGEOS_SKIP_TAURI=1
+  echo "CLI-only install selected. You can install the desktop app later with: ageos app"
+fi
 if [[ "${AGEOS_SKIP_DEPS:-0}" != "1" ]]; then
   ./scripts/install-deps.sh
 fi

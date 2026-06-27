@@ -6,6 +6,16 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 0
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+. "$SCRIPT_DIR/install-ui.sh"
+AGEOS_INSTALL_APP="$(ageos_resolve_desktop_app_choice)"
+export AGEOS_INSTALL_APP
+if [[ "$AGEOS_INSTALL_APP" == "1" ]]; then
+  export AGEOS_SKIP_TAURI=0
+else
+  export AGEOS_SKIP_TAURI=1
+fi
+
 sudo apt-get update
 sudo apt-get install -y \
   build-essential \
@@ -19,8 +29,13 @@ sudo apt-get install -y \
   pkg-config \
   python3-dev \
   python3-full \
+  python3-gi \
   python3-pip \
   python3-venv
+
+if [[ "${AGEOS_INSTALL_APP:-1}" != "0" && "${AGEOS_SKIP_TAURI:-0}" != "1" ]]; then
+  bash "$SCRIPT_DIR/install-app-deps.sh"
+fi
 
 LLAMA_CPP_REPO="${LLAMA_CPP_REPO:-https://github.com/ggml-org/llama.cpp.git}"
 LLAMA_CPP_REF="${LLAMA_CPP_REF:-master}"
