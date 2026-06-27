@@ -45,6 +45,14 @@ jobs:
         if: always()
         run: scripts/ci/write-coverage-summary.sh .ci-artifacts/coverage
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: .ci-artifacts/coverage/python/coverage.xml,.ci-artifacts/coverage/c/coverage.xml
+          disable_search: true
+          fail_ci_if_error: true
+
       - name: Upload coverage reports
         if: always()
         uses: actions/upload-artifact@v4

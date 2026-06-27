@@ -98,7 +98,7 @@ C tests live under `libageos/tests/` and link against the built `libageos.so`. M
 
 ### Coverage
 
-CI enforces 45% line coverage for both C (`libageos`) and Python (`ageos`) code. To reproduce the coverage run locally:
+CI uploads C and Python Cobertura reports to [Codecov](https://codecov.io/gh/ageos-labs/ageos-runtime). The project target is 45% line coverage (see `codecov.yml`). To reproduce the coverage run locally:
 
 ```bash
 docker build -f docker/Dockerfile --target unit-test \
@@ -109,7 +109,7 @@ docker run --rm --privileged --security-opt seccomp=unconfined \
   ageos-runtime:unit-cov scripts/ci/run-unit-tests-coverage.sh
 ```
 
-HTML reports are written under `.ci-artifacts/coverage/`.
+HTML reports are written under `.ci-artifacts/coverage/`. CI also keeps those reports as workflow artifacts; Codecov provides the dashboard, PR comments, and README badge.
 
 ### Integration Tests
 

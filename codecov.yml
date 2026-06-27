@@ -1,0 +1,33 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 45%
+        threshold: 0%
+    patch:
+      default:
+        target: auto
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: false
+
+ignore:
+  - "**/*_test.c"
+  - "libageos/tests/**"
+
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: 45%
+  individual_components:
+    - component_id: libageos
+      name: libageos
+      paths:
+        - libageos/**
+    - component_id: ageos
+      name: ageos
+      paths:
+        - ageos/**
