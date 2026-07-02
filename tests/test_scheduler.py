@@ -5,13 +5,13 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from ageos.cli.main import app
-from ageos.native import LibAgeosError
-from ageos.node.client import SchedulerClient
+from bubblehub.cli.main import app
+from bubblehub.native import LibBubbleHubError
+from bubblehub.node.client import SchedulerClient
 
 
 def test_ram_available_admits_background(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    monkeypatch.setenv("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
     admission = SchedulerClient.local().admit_model_job(
         specialty="default-instruct",
         model_name="tiny",
@@ -24,7 +24,7 @@ def test_ram_available_admits_background(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_ram_low_queues_background(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    monkeypatch.setenv("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
     client = SchedulerClient.local()
     client.native.configure_limits(10, 0)
     admission = client.admit_model_job(
@@ -40,7 +40,7 @@ def test_ram_low_queues_background(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
 
 def test_idle_warm_model_stays_loaded_until_lru_eviction(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    monkeypatch.setenv("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
     client = SchedulerClient.local()
     client.native.configure_limits(10, 0)
     client.mark_model_loaded("old", "default-instruct", "llama", 6, 0, 999999, 51000)
@@ -60,7 +60,7 @@ def test_idle_warm_model_stays_loaded_until_lru_eviction(tmp_path: Path, monkeyp
 
 
 def test_active_model_is_not_evicted_for_new_load(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    monkeypatch.setenv("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
     client = SchedulerClient.local()
     client.native.configure_limits(10, 0)
     client.mark_model_loaded("active", "default-instruct", "llama", 6, 0, 999999, 51000)
@@ -79,8 +79,8 @@ def test_active_model_is_not_evicted_for_new_load(tmp_path: Path, monkeypatch: p
 
 def test_scheduler_limits_load_from_user_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
-    config_dir = tmp_path / ".config" / "ageos"
+    monkeypatch.setenv("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    config_dir = tmp_path / ".config" / "bubblehub"
     config_dir.mkdir(parents=True)
     (config_dir / "models.yaml").write_text(
         "scheduler:\n  ram_limit_gb: 7\n  vram_limit_gb: 3\n",
@@ -94,13 +94,13 @@ def test_scheduler_limits_load_from_user_config(tmp_path: Path, monkeypatch: pyt
 
 def test_scheduler_limits_load_from_explicit_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    monkeypatch.setenv("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
     config_path = tmp_path / "custom-models.yaml"
     config_path.write_text(
         "scheduler:\n  ram_limit_gb: 11\n  vram_limit_gb: 5\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGEOS_MODELS_CONFIG", str(config_path))
+    monkeypatch.setenv("BUBBLEHUB_MODELS_CONFIG", str(config_path))
 
     limits = SchedulerClient.local().resource_limits()
     assert limits["ram_bytes"] == 11 * 1024**3
@@ -109,7 +109,7 @@ def test_scheduler_limits_load_from_explicit_config(tmp_path: Path, monkeypatch:
 
 def test_models_stop_evicts_all_loaded_models(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    monkeypatch.setenv("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
     client = SchedulerClient.local()
     client.mark_model_loaded("first", "default-instruct", "llama", 1, 0, 999999, 51000)
     client.mark_model_loaded("second", "default-instruct", "llama", 1, 0, 999998, 51001)
@@ -121,9 +121,9 @@ def test_models_stop_evicts_all_loaded_models(tmp_path: Path, monkeypatch: pytes
     assert SchedulerClient.local().status_snapshot()["models"] == []
 
 
-def test_missing_libageos_raises_actionable_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    import ageos.native as native
+def test_missing_libbubblehub_raises_actionable_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import bubblehub.native as native
 
     monkeypatch.setattr(native.Path, "exists", lambda self: False)
-    with pytest.raises(LibAgeosError, match="libageos.so is required"):
-        native._load_libageos()
+    with pytest.raises(LibBubbleHubError, match="libbubblehub.so is required"):
+        native._load_libbubblehub()

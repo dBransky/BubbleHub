@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from ageos.engine.registry import ModelSpec
-from ageos.engine.session import EngineSession
-from ageos.native import HardwareInfo
+from bubblehub.engine.registry import ModelSpec
+from bubblehub.engine.session import EngineSession
+from bubblehub.native import HardwareInfo
 
 GPU_MODEL = ModelSpec(
     name="gpu-model",
@@ -86,7 +86,7 @@ def test_engine_session_does_not_mark_python_model_lifecycle(monkeypatch) -> Non
 
 
 def test_engine_session_forwards_chat_to_sandbox_endpoint(monkeypatch) -> None:
-    import ageos.engine.session as session_module
+    import bubblehub.engine.session as session_module
 
     calls: list[dict[str, object]] = []
 
@@ -94,9 +94,9 @@ def test_engine_session_forwards_chat_to_sandbox_endpoint(monkeypatch) -> None:
         calls.append({"url": url, "json": json, "timeout": timeout})
         return FakeResponse({"choices": [{"message": {"content": "sandbox"}}]})
 
-    monkeypatch.setenv("AGEOS_SANDBOX", "1")
-    monkeypatch.setenv("AGEOS_SANDBOX_INFERENCE_HOST", "127.0.0.1")
-    monkeypatch.setenv("AGEOS_SANDBOX_INFERENCE_PORT", "8123")
+    monkeypatch.setenv("BUBBLEHUB_SANDBOX", "1")
+    monkeypatch.setenv("BUBBLEHUB_SANDBOX_INFERENCE_HOST", "127.0.0.1")
+    monkeypatch.setenv("BUBBLEHUB_SANDBOX_INFERENCE_PORT", "8123")
     monkeypatch.setattr(session_module.requests, "post", post)
     monkeypatch.setattr(
         session_module,
@@ -112,7 +112,7 @@ def test_engine_session_forwards_chat_to_sandbox_endpoint(monkeypatch) -> None:
             "url": "http://127.0.0.1:8123/v1/chat/completions",
             "json": {
                 "model": "default-instruct",
-                "ageos_specialty": "default-instruct",
+                "bubblehub_specialty": "default-instruct",
                 "messages": [{"role": "user", "content": "hi"}],
                 "max_tokens": 8,
                 "stream": False,
@@ -123,11 +123,11 @@ def test_engine_session_forwards_chat_to_sandbox_endpoint(monkeypatch) -> None:
 
 
 def test_engine_session_requires_sandbox_inference_endpoint(monkeypatch) -> None:
-    monkeypatch.setenv("AGEOS_SANDBOX", "1")
-    monkeypatch.delenv("AGEOS_SANDBOX_INFERENCE_HOST", raising=False)
-    monkeypatch.delenv("AGEOS_SANDBOX_INFERENCE_PORT", raising=False)
+    monkeypatch.setenv("BUBBLEHUB_SANDBOX", "1")
+    monkeypatch.delenv("BUBBLEHUB_SANDBOX_INFERENCE_HOST", raising=False)
+    monkeypatch.delenv("BUBBLEHUB_SANDBOX_INFERENCE_PORT", raising=False)
 
-    with pytest.raises(RuntimeError, match="AGEOS_SANDBOX_INFERENCE_HOST"):
+    with pytest.raises(RuntimeError, match="BUBBLEHUB_SANDBOX_INFERENCE_HOST"):
         with EngineSession("default-instruct"):
             pass
 
@@ -193,7 +193,7 @@ def _patch_session_dependencies(
     monkeypatch,
     candidates: list[ModelSpec],
 ) -> None:
-    import ageos.engine.session as session_module
+    import bubblehub.engine.session as session_module
 
     monkeypatch.setattr(session_module.ModelRegistry, "load_default", lambda: FakeRegistry(candidates))
     monkeypatch.setattr(

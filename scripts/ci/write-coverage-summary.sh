@@ -106,14 +106,14 @@ lines = [
     "",
     "| Component | Line coverage | Threshold | Status |",
     "|-----------|---------------|-----------|--------|",
-    f"| C (`libageos`) | {percent(c_total)} | {threshold:.0f}% | {status(c_total)} |",
-    f"| Python (`ageos`) | {percent(python_total)} | {threshold:.0f}% | {status(python_total)} |",
+    f"| C (`libbubblehub`) | {percent(c_total)} | {threshold:.0f}% | {status(c_total)} |",
+    f"| Python (`bubblehub`) | {percent(python_total)} | {threshold:.0f}% | {status(python_total)} |",
     "",
 ]
 
-lines.extend(file_table("C (`libageos`) Per File", c_files))
+lines.extend(file_table("C (`libbubblehub`) Per File", c_files))
 lines.append("")
-lines.extend(file_table("Python (`ageos`) Per File", python_files))
+lines.extend(file_table("Python (`bubblehub`) Per File", python_files))
 lines.append("")
 
 print("\n".join(lines))

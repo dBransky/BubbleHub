@@ -1,4 +1,4 @@
-from ageos.engine.registry import ModelRegistry
+from bubblehub.engine.registry import ModelRegistry
 
 
 def test_default_registry_resolves_code_specialty() -> None:
@@ -124,7 +124,7 @@ specialties:
 """,
         encoding="utf-8",
     )
-    monkeypatch.setenv("AGEOS_MODELS_CONFIG", str(config))
+    monkeypatch.setenv("BUBBLEHUB_MODELS_CONFIG", str(config))
 
     registry = ModelRegistry.load_default()
     model = registry.resolve_specialty(

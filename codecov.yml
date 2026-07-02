@@ -15,7 +15,7 @@ comment:
 
 ignore:
   - "**/*_test.c"
-  - "libageos/tests/**"
+  - "libbubblehub/tests/**"
 
 component_management:
   default_rules:
@@ -23,11 +23,11 @@ component_management:
       - type: project
         target: 45%
   individual_components:
-    - component_id: libageos
-      name: libageos
+    - component_id: libbubblehub
+      name: libbubblehub
       paths:
-        - libageos/**
-    - component_id: ageos
-      name: ageos
+        - libbubblehub/**
+    - component_id: bubblehub
+      name: bubblehub
       paths:
-        - ageos/**
+        - bubblehub/**

@@ -1,16 +1,16 @@
 :root {
   color-scheme: dark;
-  --bg: #090b10;
-  --sidebar: #0d1017;
-  --panel: #111620;
-  --panel-2: #151b27;
-  --line: rgba(148, 163, 184, 0.16);
-  --text: #edf2ff;
-  --muted: #8994a8;
-  --accent: #8b5cf6;
-  --accent-2: #57d3ff;
-  --warn: #f5c451;
-  --danger: #ff6b7a;
+  --bg: #000000;
+  --sidebar: #000000;
+  --panel: rgba(255, 255, 255, 0.055);
+  --panel-2: rgba(255, 255, 255, 0.085);
+  --line: rgba(255, 255, 255, 0.16);
+  --text: #ffffff;
+  --muted: rgba(255, 255, 255, 0.66);
+  --accent: #FE9CBF;
+  --accent-2: #ffffff;
+  --warn: #FE9CBF;
+  --danger: #FE9CBF;
 }
 
 * { box-sizing: border-box; }
@@ -20,8 +20,8 @@ body {
   min-height: 100vh;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   background:
-    radial-gradient(circle at top right, rgba(87, 211, 255, 0.12), transparent 28%),
-    radial-gradient(circle at bottom left, rgba(139, 92, 246, 0.12), transparent 30%),
+    radial-gradient(circle at top right, rgba(254, 156, 191, 0.18), transparent 28%),
+    radial-gradient(circle at bottom left, rgba(255, 255, 255, 0.08), transparent 30%),
     var(--bg);
   color: var(--text);
   overflow: hidden;
@@ -35,7 +35,7 @@ body {
 
 .sidebar {
   border-right: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(13, 16, 23, 0.98), rgba(9, 11, 16, 0.96));
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.98), rgba(0, 0, 0, 0.96));
   display: flex;
   flex-direction: column;
   padding: 22px 16px;
@@ -53,7 +53,7 @@ body {
   height: 40px;
   border-radius: 14px;
   object-fit: cover;
-  box-shadow: 0 0 28px rgba(139, 92, 246, 0.28);
+  box-shadow: 0 0 28px rgba(254, 156, 191, 0.28);
 }
 
 .brand strong { display: block; font-size: 1rem; }
@@ -76,9 +76,9 @@ body {
 }
 
 .tabs button.active {
-  border-color: rgba(139, 92, 246, 0.45);
+  border-color: rgba(254, 156, 191, 0.48);
   color: var(--accent);
-  background: rgba(139, 92, 246, 0.1);
+  background: rgba(254, 156, 191, 0.12);
 }
 
 .sidebar-footer {
@@ -98,12 +98,12 @@ body {
   height: 9px;
   border-radius: 999px;
   background: var(--warn);
-  box-shadow: 0 0 14px rgba(245, 196, 81, 0.5);
+  box-shadow: 0 0 14px rgba(254, 156, 191, 0.5);
 }
 
 #healthDot.online {
   background: var(--accent);
-  box-shadow: 0 0 14px rgba(139, 92, 246, 0.55);
+  box-shadow: 0 0 14px rgba(254, 156, 191, 0.55);
 }
 
 .workspace {
@@ -142,7 +142,7 @@ h3 { color: var(--muted); font-size: 0.74rem; margin: 18px 0 10px; text-transfor
 
 .resource-card, .panel {
   border: 1px solid var(--line);
-  background: linear-gradient(180deg, rgba(21, 27, 39, 0.96), rgba(13, 17, 25, 0.96));
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
   border-radius: 22px;
   box-shadow: 0 20px 70px rgba(0, 0, 0, 0.26);
 }
@@ -159,9 +159,9 @@ h3 { color: var(--muted); font-size: 0.74rem; margin: 18px 0 10px; text-transfor
 
 .resource-card span, .muted, small { color: var(--muted); }
 .resource-card strong { font-size: 2.2rem; letter-spacing: -0.05em; }
-.meter { height: 9px; margin: 16px 0 9px; border-radius: 999px; background: rgba(148, 163, 184, 0.14); overflow: hidden; }
+.meter { height: 9px; margin: 16px 0 9px; border-radius: 999px; background: rgba(255, 255, 255, 0.14); overflow: hidden; }
 .meter i { display: block; width: 0%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
-.vram-card .meter i { background: linear-gradient(90deg, #57d3ff, #b069ff); }
+.vram-card .meter i { background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
 
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
@@ -235,8 +235,8 @@ h3 { color: var(--muted); font-size: 0.74rem; margin: 18px 0 10px; text-transfor
 }
 
 .row.clickable:hover, .row.selected {
-  border-color: rgba(139, 92, 246, 0.45);
-  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(254, 156, 191, 0.48);
+  background: rgba(254, 156, 191, 0.1);
 }
 
 .title { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -295,8 +295,8 @@ h3 { color: var(--muted); font-size: 0.74rem; margin: 18px 0 10px; text-transfor
 }
 
 .model-card.selected {
-  border-color: rgba(139, 92, 246, 0.5);
-  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.14);
+  border-color: rgba(254, 156, 191, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(254, 156, 191, 0.16);
 }
 
 .model-title {
@@ -373,7 +373,7 @@ h3 { color: var(--muted); font-size: 0.74rem; margin: 18px 0 10px; text-transfor
   width: min(760px, 100%);
   max-height: min(82vh, 760px);
   overflow: auto;
-  border: 1px solid rgba(139, 92, 246, 0.35);
+  border: 1px solid rgba(254, 156, 191, 0.36);
   border-radius: 24px;
   padding: 28px;
   background: linear-gradient(180deg, rgba(17, 22, 32, 0.98), rgba(9, 11, 16, 0.98));
@@ -401,7 +401,7 @@ h3 { color: var(--muted); font-size: 0.74rem; margin: 18px 0 10px; text-transfor
 }
 
 .onboarding-card.recommended {
-  border-color: rgba(139, 92, 246, 0.5);
+  border-color: rgba(254, 156, 191, 0.5);
 }
 
 @media (max-width: 820px) {

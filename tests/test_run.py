@@ -5,12 +5,12 @@ from unittest.mock import Mock, patch
 import pytest
 import typer
 
-from ageos.app.agents import read_agent_metadata
-from ageos.cli.run import _can_prompt_for_access, _resolve_rootfs_dir, _resolve_sandbox_paths, run_agent
+from bubblehub.app.agents import read_agent_metadata
+from bubblehub.cli.run import _can_prompt_for_access, _resolve_rootfs_dir, _resolve_sandbox_paths, run_agent
 
 
 def test_run_agent_uses_native_inference_only_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGEOS_DISABLE_ROOTFS", "1")
+    monkeypatch.setenv("BUBBLEHUB_DISABLE_ROOTFS", "1")
     client = Mock()
     client.register_agent.return_value = "agt-test"
     captured_env: dict[str, str] = {}
@@ -22,8 +22,8 @@ def test_run_agent_uses_native_inference_only_network(monkeypatch: pytest.Monkey
     client.native.run_sandbox.side_effect = run_sandbox
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -46,9 +46,9 @@ def test_run_agent_uses_native_inference_only_network(monkeypatch: pytest.Monkey
     assert client.native.run_sandbox.call_args.kwargs["inference_port"] == 8000
     assert client.native.run_sandbox.call_args.kwargs["sandbox_inference_port"] == 8000
     assert client.native.run_sandbox.call_args.kwargs["sandbox_http_proxy_port"] == 18080
-    assert captured_env["AGEOS_NETWORK"] == "inference-only"
-    assert captured_env["AGEOS_SANDBOX_INFERENCE_PORT"] == "8000"
-    assert captured_env["AGEOS_HTTP_PROXY_PORT"] == "18080"
+    assert captured_env["BUBBLEHUB_NETWORK"] == "inference-only"
+    assert captured_env["BUBBLEHUB_SANDBOX_INFERENCE_PORT"] == "8000"
+    assert captured_env["BUBBLEHUB_HTTP_PROXY_PORT"] == "18080"
     assert captured_env["HTTP_PROXY"] == "http://127.0.0.1:18080"
     assert captured_env["HTTPS_PROXY"] == "http://127.0.0.1:18080"
     assert captured_env["http_proxy"] == "http://127.0.0.1:18080"
@@ -58,8 +58,8 @@ def test_run_agent_uses_native_inference_only_network(monkeypatch: pytest.Monkey
 
 
 def test_run_agent_records_display_name_and_exports_prompt_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGEOS_DISABLE_ROOTFS", "1")
-    monkeypatch.setenv("AGEOS_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("BUBBLEHUB_DISABLE_ROOTFS", "1")
+    monkeypatch.setenv("BUBBLEHUB_STATE_DIR", str(tmp_path / "state"))
     client = Mock()
     client.register_agent.return_value = "agt-named"
     captured_env: dict[str, str] = {}
@@ -71,8 +71,8 @@ def test_run_agent_records_display_name_and_exports_prompt_name(tmp_path: Path, 
     client.native.run_sandbox.side_effect = run_sandbox
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -87,7 +87,7 @@ def test_run_agent_records_display_name_and_exports_prompt_name(tmp_path: Path, 
             )
 
     assert exc.value.exit_code == 0
-    assert captured_env["AGEOS_AGENT_NAME"] == "research shell"
+    assert captured_env["BUBBLEHUB_AGENT_NAME"] == "research shell"
     assert read_agent_metadata("agt-named")["name"] == "research shell"
 
 
@@ -96,11 +96,11 @@ def test_run_access_prompt_requires_interactive_stdin_and_stdout() -> None:
     stdout = Mock()
     stdin.isatty.return_value = True
     stdout.isatty.return_value = True
-    with patch("ageos.cli.run.sys.stdin", stdin), patch("ageos.cli.run.sys.stdout", stdout):
+    with patch("bubblehub.cli.run.sys.stdin", stdin), patch("bubblehub.cli.run.sys.stdout", stdout):
         assert _can_prompt_for_access()
 
     stdout.isatty.return_value = False
-    with patch("ageos.cli.run.sys.stdin", stdin), patch("ageos.cli.run.sys.stdout", stdout):
+    with patch("bubblehub.cli.run.sys.stdin", stdin), patch("bubblehub.cli.run.sys.stdout", stdout):
         assert not _can_prompt_for_access()
 
 
@@ -110,8 +110,8 @@ def test_run_agent_allow_network_disables_isolation() -> None:
     client.native.run_sandbox.return_value = 0
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -147,8 +147,8 @@ def test_run_agent_stages_relative_binary_without_root_dir(tmp_path: Path, monke
     client.native.run_sandbox.side_effect = run_sandbox
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -165,7 +165,7 @@ def test_run_agent_stages_relative_binary_without_root_dir(tmp_path: Path, monke
     _binary, argv = client.native.run_sandbox.call_args.args
     assert argv[-1] == "/home/agt-test/workspace/basic_agent.py"
     assert len(staged_roots) == 1
-    assert staged_roots[0].name.startswith("ageos-workspace-")
+    assert staged_roots[0].name.startswith("bubblehub-workspace-")
 
 
 def test_run_agent_rejects_binary_outside_root_dir(tmp_path: Path) -> None:
@@ -179,8 +179,8 @@ def test_run_agent_rejects_binary_outside_root_dir(tmp_path: Path) -> None:
     client.register_agent.return_value = "agt-test"
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.BadParameter, match="--binary must be inside --root-dir"):
             run_agent(
@@ -201,8 +201,8 @@ def test_run_agent_resolves_explicit_relative_binary_from_host_cwd() -> None:
     client.native.run_sandbox.return_value = 0
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -230,8 +230,8 @@ def test_run_agent_resolves_dot_relative_binary_inside_root_dir(tmp_path: Path) 
     client.native.run_sandbox.return_value = 0
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -253,15 +253,15 @@ def test_run_agent_resolves_dot_relative_binary_inside_root_dir(tmp_path: Path) 
 def test_run_agent_reuses_persistent_sandbox(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     binary = tmp_path / "true"
     binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    agent_home = tmp_path / ".ageos" / "agents" / "agt-existing" / "home"
+    agent_home = tmp_path / ".bubblehub" / "agents" / "agt-existing" / "home"
     agent_home.mkdir(parents=True)
     client = Mock()
     client.register_agent.side_effect = lambda *_args, **kwargs: kwargs["agent_id"] or "agt-new"
     client.native.run_sandbox.return_value = 0
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -278,7 +278,7 @@ def test_run_agent_reuses_persistent_sandbox(tmp_path: Path, capsys: pytest.Capt
     assert exc.value.exit_code == 0
     assert client.register_agent.call_args.kwargs["agent_id"] == "agt-existing"
     assert client.native.run_sandbox.call_args.kwargs["root_dir"] == str(tmp_path.resolve())
-    assert (tmp_path / ".ageos" / "current-agent").read_text(encoding="utf-8") == "agt-existing\n"
+    assert (tmp_path / ".bubblehub" / "current-agent").read_text(encoding="utf-8") == "agt-existing\n"
     assert "Persistent sandbox found: reusing agt-existing" in capsys.readouterr().out
 
 
@@ -290,8 +290,8 @@ def test_run_agent_does_not_print_persistent_message_without_existing_sandbox(tm
     client.native.run_sandbox.return_value = 0
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -307,14 +307,14 @@ def test_run_agent_does_not_print_persistent_message_without_existing_sandbox(tm
 
     assert exc.value.exit_code == 0
     assert client.register_agent.call_args.kwargs["agent_id"] is None
-    assert (tmp_path / ".ageos" / "current-agent").read_text(encoding="utf-8") == "agt-new\n"
+    assert (tmp_path / ".bubblehub" / "current-agent").read_text(encoding="utf-8") == "agt-new\n"
     assert "Persistent sandbox found" not in capsys.readouterr().out
 
 
 def test_run_agent_force_new_sandbox_removes_existing_agent_home(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     binary = tmp_path / "true"
     binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    agent_dir = tmp_path / ".ageos" / "agents" / "agt-existing"
+    agent_dir = tmp_path / ".bubblehub" / "agents" / "agt-existing"
     agent_home = agent_dir / "home"
     agent_home.mkdir(parents=True)
     (agent_home / "test.txt").write_text("from previous run\n", encoding="utf-8")
@@ -323,8 +323,8 @@ def test_run_agent_force_new_sandbox_removes_existing_agent_home(tmp_path: Path,
     client.native.run_sandbox.return_value = 0
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -342,7 +342,7 @@ def test_run_agent_force_new_sandbox_removes_existing_agent_home(tmp_path: Path,
     assert exc.value.exit_code == 0
     assert client.register_agent.call_args.kwargs["agent_id"] is None
     assert not agent_dir.exists()
-    assert (tmp_path / ".ageos" / "current-agent").read_text(encoding="utf-8") == "agt-new\n"
+    assert (tmp_path / ".bubblehub" / "current-agent").read_text(encoding="utf-8") == "agt-new\n"
     assert "Persistent sandbox found" not in capsys.readouterr().out
 
 
@@ -353,7 +353,7 @@ def test_run_agent_passes_rootfs_and_overlay_paths(tmp_path: Path, monkeypatch: 
     root_dir.mkdir()
     binary = root_dir / "agent.py"
     binary.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
-    monkeypatch.setenv("AGEOS_ROOTFS_DIR", str(rootfs))
+    monkeypatch.setenv("BUBBLEHUB_ROOTFS_DIR", str(rootfs))
     client = Mock()
     client.register_agent.return_value = "agt-test"
     captured_env: dict[str, str] = {}
@@ -365,8 +365,8 @@ def test_run_agent_passes_rootfs_and_overlay_paths(tmp_path: Path, monkeypatch: 
     client.native.run_sandbox.side_effect = run_sandbox
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -383,17 +383,17 @@ def test_run_agent_passes_rootfs_and_overlay_paths(tmp_path: Path, monkeypatch: 
     assert exc.value.exit_code == 0
     kwargs = client.native.run_sandbox.call_args.kwargs
     assert kwargs["rootfs_dir"] == str(rootfs.resolve())
-    assert kwargs["overlay_upper_dir"] == str(root_dir / ".ageos" / "agents" / "agt-test" / "overlay" / "upper")
-    assert kwargs["overlay_work_dir"] == str(root_dir / ".ageos" / "agents" / "agt-test" / "overlay" / "work")
+    assert kwargs["overlay_upper_dir"] == str(root_dir / ".bubblehub" / "agents" / "agt-test" / "overlay" / "upper")
+    assert kwargs["overlay_work_dir"] == str(root_dir / ".bubblehub" / "agents" / "agt-test" / "overlay" / "work")
     assert Path(kwargs["overlay_upper_dir"]).is_dir()
     assert Path(kwargs["overlay_work_dir"]).is_dir()
-    assert captured_env["AGEOS_ROOTFS_RELEASE"] == "ubuntu-26.04"
+    assert captured_env["BUBBLEHUB_ROOTFS_RELEASE"] == "ubuntu-26.04"
 
 
 def test_run_agent_creates_temporary_overlay_workspace_for_system_binary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     rootfs = tmp_path / "rootfs"
     rootfs.mkdir()
-    monkeypatch.setenv("AGEOS_ROOTFS_DIR", str(rootfs))
+    monkeypatch.setenv("BUBBLEHUB_ROOTFS_DIR", str(rootfs))
     client = Mock()
     client.register_agent.return_value = "agt-test"
     overlay_roots: list[Path] = []
@@ -402,14 +402,14 @@ def test_run_agent_creates_temporary_overlay_workspace_for_system_binary(tmp_pat
         overlay_upper = Path(str(kwargs["overlay_upper_dir"]))
         overlay_roots.append(overlay_upper.parents[3])
         assert overlay_upper.is_dir()
-        assert Path(str(kwargs["root_dir"])).name.startswith("ageos-workspace-")
+        assert Path(str(kwargs["root_dir"])).name.startswith("bubblehub-workspace-")
         return 0
 
     client.native.run_sandbox.side_effect = run_sandbox
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -428,7 +428,7 @@ def test_run_agent_creates_temporary_overlay_workspace_for_system_binary(tmp_pat
 
 
 def test_resolve_rootfs_dir_can_be_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGEOS_DISABLE_ROOTFS", "1")
+    monkeypatch.setenv("BUBBLEHUB_DISABLE_ROOTFS", "1")
     assert _resolve_rootfs_dir() is None
 
 
@@ -464,7 +464,7 @@ def test_sandbox_paths_reject_protected_root_dir() -> None:
         _resolve_sandbox_paths(Path("/usr"), None)
 
 
-def test_sandbox_paths_reject_ageos_source_tree() -> None:
+def test_sandbox_paths_reject_bubblehub_source_tree() -> None:
     with pytest.raises(typer.BadParameter):
         _resolve_sandbox_paths(Path.cwd(), None)
 

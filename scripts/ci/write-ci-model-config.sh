@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_PATH="${AGEOS_MODELS_CONFIG:-${AGEOS_CACHE:-/cache/ageos}/ci-models.yaml}"
+CONFIG_PATH="${BUBBLEHUB_MODELS_CONFIG:-${BUBBLEHUB_CACHE:-/cache/bubblehub}/ci-models.yaml}"
 
 mkdir -p "$(dirname "$CONFIG_PATH")"
 

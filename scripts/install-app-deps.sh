@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Linux" ]]; then
-  echo "AgeOS desktop app dependencies are installed inside Linux or WSL."
+  echo "BubbleHub desktop app dependencies are installed inside Linux or WSL."
   exit 0
 fi
 

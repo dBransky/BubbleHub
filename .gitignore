@@ -9,10 +9,10 @@ htmlcov/
 *.egg-info/
 build/
 dist/
-libageos/build/
-libageos/.cache/
-.ageos/
+libbubblehub/build/
+libbubblehub/.cache/
+.bubblehub/
 examples/openclaw/openclaw/
 .ci-artifacts/
 app/target/
-.ageos-install-app-choice
+.bubblehub-install-app-choice

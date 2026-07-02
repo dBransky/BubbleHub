@@ -1,4 +1,4 @@
-.ageos-cache/
+.bubblehub-cache/
 .git/
 .github/
 .mypy_cache/
@@ -13,14 +13,14 @@ __pycache__/
 *.log
 *.pyc
 build/
-libageos/build/
+libbubblehub/build/
 dist/
 release-assets/
 tmp/
 
 examples/openclaw/openclaw/
-examples/**/.ageos/
+examples/**/.bubblehub/
 
 docker-compose*.yml
 build/
-.ageos-install-app-choice
+.bubblehub-install-app-choice

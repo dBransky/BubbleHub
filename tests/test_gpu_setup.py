@@ -1,5 +1,5 @@
-from ageos.gpu_setup import choose_install_profile
-from ageos.native import HardwareInfo
+from bubblehub.gpu_setup import choose_install_profile
+from bubblehub.native import HardwareInfo
 
 
 def test_gpu_setup_selects_cpu_without_gpu_backend() -> None:

@@ -1,4 +1,4 @@
-from ageos.engine.structured import build_structured_messages, parse_json_output
+from bubblehub.engine.structured import build_structured_messages, parse_json_output
 
 
 def test_parse_json_output_handles_fenced_json() -> None:

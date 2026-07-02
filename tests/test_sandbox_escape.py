@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from ageos.native import NativeScheduler
+from bubblehub.native import NativeScheduler
 
 pytestmark = pytest.mark.skipif(platform.system() != "Linux", reason="sandbox escape tests are Linux-only")
 
@@ -59,7 +59,7 @@ def _configure_escape_env(
     allow_network: bool,
     suffix: str,
 ) -> None:
-    monkeypatch.setenv("AGEOS_AGENT_ID", f"agt-escape-{suffix}-{'net' if allow_network else 'isolated'}")
+    monkeypatch.setenv("BUBBLEHUB_AGENT_ID", f"agt-escape-{suffix}-{'net' if allow_network else 'isolated'}")
     monkeypatch.setenv("HOST_CANARY", str(host_canary))
     monkeypatch.setenv("EXPECT_NETWORK_BLOCKED", "0" if allow_network else "1")
 

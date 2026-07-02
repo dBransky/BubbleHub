@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from ageos.native import NativeScheduler
+from bubblehub.native import NativeScheduler
 
 HTTP_PROXY_PORT = 18080
 
@@ -131,9 +131,9 @@ def test_http_proxy_denies_curl_request(tmp_path: Path) -> None:
         tmp_path,
         (
             "status=$(curl -sS -o \"$TMPDIR/proxy-body\" -w '%{http_code}' "
-            "--max-time 5 http://example.com/ageos-proxy-test); "
+            "--max-time 5 http://example.com/bubblehub-proxy-test); "
             'test "$status" = 403; '
-            "grep -q 'AgeOS proxy denied the request' \"$TMPDIR/proxy-body\""
+            "grep -q 'BubbleHub proxy denied the request' \"$TMPDIR/proxy-body\""
         ),
     )
 
@@ -148,7 +148,7 @@ def test_sandbox_cannot_impersonate_another_agent_manifest(
         pytest.skip("curl is not installed")
     real_agent_id = "agt-real-manifest"
     victim_agent_id = "agt-victim-manifest"
-    monkeypatch.delenv("AGEOS_STATE_DIR", raising=False)
+    monkeypatch.delenv("BUBBLEHUB_STATE_DIR", raising=False)
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "xdg-state"))
     monkeypatch.setenv("HOME", str(tmp_path / "host-home"))
 
@@ -162,16 +162,16 @@ def test_sandbox_cannot_impersonate_another_agent_manifest(
             path=parsed.path or "/",
             policy="always",
         )
-        monkeypatch.setenv("AGEOS_AGENT_ID", real_agent_id)
+        monkeypatch.setenv("BUBBLEHUB_AGENT_ID", real_agent_id)
         result = _run_shell_with_proxy(
             tmp_path,
             (
                 "set -eu; "
-                f"export AGEOS_AGENT_ID={victim_agent_id}; "
+                f"export BUBBLEHUB_AGENT_ID={victim_agent_id}; "
                 "status=$(curl --noproxy '' -sS -o \"$TMPDIR/proxy-body\" -w '%{http_code}' "
                 f"--max-time 5 {target_url}); "
                 'test "$status" = 403; '
-                "grep -q 'AgeOS proxy denied the request' \"$TMPDIR/proxy-body\""
+                "grep -q 'BubbleHub proxy denied the request' \"$TMPDIR/proxy-body\""
             ),
         )
 
@@ -185,7 +185,7 @@ def test_tenant_unset_proxy_env_cannot_reach_public_web(tmp_path: Path) -> None:
     script = (
         "set -eu; "
         'test -n "$HTTP_PROXY"; '
-        "unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy AGEOS_HTTP_PROXY_PORT NO_PROXY no_proxy; "
+        "unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy BUBBLEHUB_HTTP_PROXY_PORT NO_PROXY no_proxy; "
         f"if curl -fsS --max-time 3 {target} >/dev/null 2>&1; then exit 9; fi; "
         f"if curl -fsS --noproxy '*' --max-time 3 {target} >/dev/null 2>&1; then exit 10; fi; "
         f"if curl -fsS --proxy '' --max-time 3 {target} >/dev/null 2>&1; then exit 11; fi; "
@@ -204,7 +204,7 @@ def test_tenant_python_unset_proxy_env_cannot_reach_public_web(tmp_path: Path) -
         "import sys\n"
         "import urllib.request\n"
         "for key in list(os.environ):\n"
-        "    if key.startswith('AGEOS_') or key in {\n"
+        "    if key.startswith('BUBBLEHUB_') or key in {\n"
         "        'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy',\n"
         "    }:\n"
         "        os.environ.pop(key, None)\n"
@@ -339,7 +339,7 @@ def test_isolated_sandbox_overwrites_preset_proxy_env(tmp_path: Path, monkeypatc
             'test "$HTTPS_PROXY" = "http://127.0.0.1:18080"; '
             'test "$http_proxy" = "http://127.0.0.1:18080"; '
             'test "$https_proxy" = "http://127.0.0.1:18080"; '
-            'test "$AGEOS_HTTP_PROXY_PORT" = "18080"; '
+            'test "$BUBBLEHUB_HTTP_PROXY_PORT" = "18080"; '
             'echo ",$NO_PROXY," | grep -q ",127.0.0.1,"; '
             'echo ",$NO_PROXY," | grep -q ",localhost,"; '
             'echo ",$no_proxy," | grep -q ",127.0.0.1,"; '
@@ -360,7 +360,7 @@ def test_isolated_sandbox_starts_http_proxy_by_default(tmp_path: Path) -> None:
         (
             'test "$HTTP_PROXY" = "http://127.0.0.1:18080"; '
             "status=$(curl -sS -o \"$TMPDIR/proxy-body\" -w '%{http_code}' "
-            "--max-time 5 http://example.com/ageos-default-proxy); "
+            "--max-time 5 http://example.com/bubblehub-default-proxy); "
             'test "$status" = 403'
         ),
         isolate_network=True,

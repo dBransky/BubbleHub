@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: AgeOS Community (Discord)
+  - name: BubbleHub Community (Discord)
     url: https://discord.gg/skwKqSgvD2
     about: Ask questions and get help from the community on Discord.
-  - name: AgeOS Website
-    url: https://ageos.dev
-    about: Visit the AgeOS website for documentation and downloads.
+  - name: BubbleHub Website
+    url: https://BubbleHub.ai
+    about: Visit the BubbleHub website for documentation and downloads.

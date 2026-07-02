@@ -12,17 +12,17 @@ from threading import Thread
 import pytest
 import requests
 
-from ageos.engine.session import EngineSession
-from ageos.http_api import ApiConfig, create_http_server
-from ageos.integrations.openai_shim import AgeosOpenAI
-from ageos.node.client import SchedulerClient
+from bubblehub.engine.session import EngineSession
+from bubblehub.http_api import ApiConfig, create_http_server
+from bubblehub.integrations.openai_shim import BubbleHubOpenAI
+from bubblehub.node.client import SchedulerClient
 
 
 def test_native_inference_reuses_warm_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     starts = tmp_path / "starts.log"
     _write_fake_llama_server(tmp_path / "llama-server", starts)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
-    monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    monkeypatch.setenv("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
 
     client = SchedulerClient.local()
     request = {
@@ -61,8 +61,8 @@ def test_native_inference_reuses_warm_backend(tmp_path: Path, monkeypatch: pytes
 def test_native_inference_starts_vllm_backend(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     starts = tmp_path / "vllm-starts.log"
     _write_fake_vllm_python(tmp_path / "fake-python", starts)
-    monkeypatch.setenv("AGEOS_PYTHON", str(tmp_path / "fake-python"))
-    monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    monkeypatch.setenv("BUBBLEHUB_PYTHON", str(tmp_path / "fake-python"))
+    monkeypatch.setenv("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
 
     client = SchedulerClient.local()
     request = {
@@ -95,12 +95,12 @@ def test_entrypoints_share_native_model_cache(tmp_path: Path, monkeypatch: pytes
     _write_models_config(tmp_path / "models.yaml")
     _write_cached_model(tmp_path)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
-    monkeypatch.setenv("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
-    monkeypatch.setenv("AGEOS_MODELS_CONFIG", str(tmp_path / "models.yaml"))
-    monkeypatch.setenv("AGEOS_CACHE", str(tmp_path / "cache"))
-    monkeypatch.setenv("AGEOS_MAX_OUTPUT_TOKENS", "8")
-    monkeypatch.delenv("AGEOS_NETWORK", raising=False)
-    monkeypatch.delenv("AGEOS_API_BASE_URL", raising=False)
+    monkeypatch.setenv("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    monkeypatch.setenv("BUBBLEHUB_MODELS_CONFIG", str(tmp_path / "models.yaml"))
+    monkeypatch.setenv("BUBBLEHUB_CACHE", str(tmp_path / "cache"))
+    monkeypatch.setenv("BUBBLEHUB_MAX_OUTPUT_TOKENS", "8")
+    monkeypatch.delenv("BUBBLEHUB_NETWORK", raising=False)
+    monkeypatch.delenv("BUBBLEHUB_API_BASE_URL", raising=False)
 
     client = SchedulerClient.local()
     server = create_http_server(ApiConfig(port=0))
@@ -112,8 +112,8 @@ def test_entrypoints_share_native_model_cache(tmp_path: Path, monkeypatch: pytes
             assert session.chat([{"role": "user", "content": "prompt"}]) == "fake-native"
 
         assert (
-            AgeosOpenAI(speciality="default-instruct")
-            .chat.completions.create(model="ageos-local", messages=[{"role": "user", "content": "shim"}])
+            BubbleHubOpenAI(speciality="default-instruct")
+            .chat.completions.create(model="bubblehub-local", messages=[{"role": "user", "content": "shim"}])
             .choices[0]
             .message.content
             == "fake-native"
@@ -122,8 +122,8 @@ def test_entrypoints_share_native_model_cache(tmp_path: Path, monkeypatch: pytes
         response = requests.post(
             f"http://127.0.0.1:{server.server_address[1]}/v1/chat/completions",
             json={
-                "model": "ageos-local",
-                "ageos_specialty": "default-instruct",
+                "model": "bubblehub-local",
+                "bubblehub_specialty": "default-instruct",
                 "messages": [{"role": "user", "content": "http"}],
             },
             timeout=5,
@@ -289,13 +289,13 @@ def _run_sandbox_style_native_forward(tmp_path: Path, port: int) -> str:
     }
     script = f"""
 import json
-from ageos.node.client import SchedulerClient
+from bubblehub.node.client import SchedulerClient
 response = SchedulerClient.local().inference_chat({request!r})
 print(json.dumps(response))
 """
     env = os.environ.copy()
-    env["AGEOS_NETWORK"] = "inference-only"
-    env["AGEOS_API_BASE_URL"] = f"http://127.0.0.1:{port}"
+    env["BUBBLEHUB_NETWORK"] = "inference-only"
+    env["BUBBLEHUB_API_BASE_URL"] = f"http://127.0.0.1:{port}"
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1])
     result = subprocess.run(
         [sys.executable, "-c", script],

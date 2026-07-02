@@ -40,17 +40,17 @@ def test_format_tool_result_falls_back_to_json() -> None:
 
 def test_proxy_config_uses_http_proxy_env(monkeypatch) -> None:
     monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9999")
-    monkeypatch.delenv("AGEOS_HTTP_PROXY_PORT", raising=False)
+    monkeypatch.delenv("BUBBLEHUB_HTTP_PROXY_PORT", raising=False)
     assert simple_agent.proxy_config() == {
         "http": "http://127.0.0.1:9999",
         "https": "http://127.0.0.1:9999",
     }
 
 
-def test_proxy_config_builds_from_ageos_port(monkeypatch) -> None:
+def test_proxy_config_builds_from_bubblehub_port(monkeypatch) -> None:
     monkeypatch.delenv("HTTP_PROXY", raising=False)
     monkeypatch.delenv("http_proxy", raising=False)
-    monkeypatch.setenv("AGEOS_HTTP_PROXY_PORT", "18080")
+    monkeypatch.setenv("BUBBLEHUB_HTTP_PROXY_PORT", "18080")
     assert simple_agent.proxy_config() == {
         "http": "http://127.0.0.1:18080",
         "https": "http://127.0.0.1:18080",
@@ -60,7 +60,7 @@ def test_proxy_config_builds_from_ageos_port(monkeypatch) -> None:
 def test_proxy_config_returns_none_without_proxy(monkeypatch) -> None:
     monkeypatch.delenv("HTTP_PROXY", raising=False)
     monkeypatch.delenv("http_proxy", raising=False)
-    monkeypatch.delenv("AGEOS_HTTP_PROXY_PORT", raising=False)
+    monkeypatch.delenv("BUBBLEHUB_HTTP_PROXY_PORT", raising=False)
     assert simple_agent.proxy_config() is None
 
 

@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from ageos.native import NativeScheduler
+from bubblehub.native import NativeScheduler
 
 pytestmark = pytest.mark.integration
 
@@ -25,25 +25,25 @@ OPENCLAW_PNPM_VERSION = "11.2.2"
 
 
 def _integration_enabled() -> bool:
-    return os.environ.get("AGEOS_RUN_INTEGRATION") == "1"
+    return os.environ.get("BUBBLEHUB_RUN_INTEGRATION") == "1"
 
 
 def _integration_env(tmp_path: Path) -> dict[str, str]:
     env = os.environ.copy()
-    env.pop("AGEOS_API_BASE_URL", None)
-    cache = env.get("AGEOS_CACHE", str(tmp_path / "ageos-cache"))
-    env["AGEOS_CACHE"] = cache
-    env["AGEOS_MODELS_CONFIG"] = env.get("AGEOS_MODELS_CONFIG", f"{cache}/ci-models.yaml")
+    env.pop("BUBBLEHUB_API_BASE_URL", None)
+    cache = env.get("BUBBLEHUB_CACHE", str(tmp_path / "bubblehub-cache"))
+    env["BUBBLEHUB_CACHE"] = cache
+    env["BUBBLEHUB_MODELS_CONFIG"] = env.get("BUBBLEHUB_MODELS_CONFIG", f"{cache}/ci-models.yaml")
     env["HOME"] = str(tmp_path / "home")
-    env["AGEOS_SKIP_MODEL_SETUP"] = "1"
+    env["BUBBLEHUB_SKIP_MODEL_SETUP"] = "1"
     env.setdefault(
-        "AGEOS_INTEGRATION_WORKSPACE_DIR",
+        "BUBBLEHUB_INTEGRATION_WORKSPACE_DIR",
         str(Path(cache) / "integration-workspaces"),
     )
-    env.setdefault("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
-    env.setdefault("AGEOS_STATE_DIR", str(tmp_path / "state"))
-    env.setdefault("AGEOS_LLAMA_CTX_SIZE", "512")
-    env.setdefault("AGEOS_MAX_OUTPUT_TOKENS", "32")
+    env.setdefault("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    env.setdefault("BUBBLEHUB_STATE_DIR", str(tmp_path / "state"))
+    env.setdefault("BUBBLEHUB_LLAMA_CTX_SIZE", "512")
+    env.setdefault("BUBBLEHUB_MAX_OUTPUT_TOKENS", "32")
     env.setdefault("NO_PROXY", "127.0.0.1,localhost")
     env.setdefault("no_proxy", "127.0.0.1,localhost")
     Path(env["HOME"]).mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,7 @@ def integration_workspace_factory(integration_env: dict[str, str]) -> Iterator[C
     roots: list[Path] = []
 
     def make_root(tmp_path: Path, name: str) -> Path:
-        workspace_dir = integration_env.get("AGEOS_INTEGRATION_WORKSPACE_DIR")
+        workspace_dir = integration_env.get("BUBBLEHUB_INTEGRATION_WORKSPACE_DIR")
         if not workspace_dir:
             return tmp_path / name
         root = Path(workspace_dir) / f"{tmp_path.name}-{name}-{uuid.uuid4().hex[:10]}"
@@ -74,10 +74,10 @@ def integration_workspace_factory(integration_env: dict[str, str]) -> Iterator[C
 @pytest.fixture(scope="module")
 def integration_env(tmp_path_factory: pytest.TempPathFactory) -> dict[str, str]:
     _require_integration_runtime()
-    env = _integration_env(tmp_path_factory.mktemp("ageos-integration"))
+    env = _integration_env(tmp_path_factory.mktemp("bubblehub-integration"))
     _run(["bash", str(ROOT / "scripts/ci/write-ci-model-config.sh")], env=env, timeout=30)
     _run(
-        ["ageos", "prompt", "--text", "Reply with ok.", "--speciality", "default-instruct"],
+        ["bubblehub", "prompt", "--text", "Reply with ok.", "--speciality", "default-instruct"],
         env=env,
         timeout=180,
     )
@@ -101,8 +101,8 @@ def _run(command: list[str], *, cwd: Path = ROOT, env: dict[str, str], timeout: 
 
 def _require_integration_runtime() -> None:
     if not _integration_enabled():
-        pytest.skip("set AGEOS_RUN_INTEGRATION=1 to run real local-inference integration tests")
-    for binary in ("ageos", "llama-server"):
+        pytest.skip("set BUBBLEHUB_RUN_INTEGRATION=1 to run real local-inference integration tests")
+    for binary in ("bubblehub", "llama-server"):
         if shutil.which(binary) is None:
             pytest.skip(f"{binary} is not installed")
 
@@ -114,8 +114,8 @@ def _copy_openclaw_workspace(source_root: Path, workspace_root: Path) -> Path:
         source_root,
         workspace_root,
         ignore=shutil.ignore_patterns(
-            ".ageos",
-            ".ageos-toolchain",
+            ".bubblehub",
+            ".bubblehub-toolchain",
             ".pnpm-store",
             "node_modules",
         ),
@@ -127,7 +127,7 @@ def _copy_mcp_agent_workspace(workspace_root: Path) -> Path:
     shutil.copytree(
         ROOT / "examples" / "mcp_agent",
         workspace_root,
-        ignore=shutil.ignore_patterns("__pycache__", ".ageos"),
+        ignore=shutil.ignore_patterns("__pycache__", ".bubblehub"),
     )
     return workspace_root
 
@@ -142,7 +142,7 @@ def openclaw_sandbox_state(
         ROOT / "examples" / "openclaw" / "openclaw",
         integration_workspace_factory(tmp_path, "openclaw"),
     )
-    state_root = openclaw_root / ".ageos"
+    state_root = openclaw_root / ".bubblehub"
     agents_root = state_root / "agents"
     marker = state_root / "current-agent"
     agent_id = f"agt-ci-{uuid.uuid4().hex[:10]}"
@@ -171,7 +171,7 @@ def _run_basic_agent(root_dir: Path, *, env: dict[str, str], force_new_sandbox: 
     if not agent_path.exists():
         shutil.copy2(ROOT / "examples" / "basic" / "basic_agent.py", agent_path)
     command = [
-        "ageos",
+        "bubblehub",
         "run",
         "--memory",
         "4G",
@@ -186,9 +186,9 @@ def _run_basic_agent(root_dir: Path, *, env: dict[str, str], force_new_sandbox: 
 
 
 def _rootfs_path(env: dict[str, str]) -> Path:
-    rootfs = Path(env.get("AGEOS_ROOTFS_DIR", "/opt/ageos/rootfs/ubuntu-26.04"))
+    rootfs = Path(env.get("BUBBLEHUB_ROOTFS_DIR", "/opt/bubblehub/rootfs/ubuntu-26.04"))
     if not rootfs.is_dir():
-        pytest.skip("AgeOS Ubuntu rootfs is not installed")
+        pytest.skip("BubbleHub Ubuntu rootfs is not installed")
     return rootfs
 
 
@@ -204,7 +204,7 @@ def _run_rootfs_shell(
 ) -> subprocess.CompletedProcess[str]:
     root_dir.mkdir(parents=True, exist_ok=True)
     command = [
-        "ageos",
+        "bubblehub",
         "run",
         "--memory",
         "4G",
@@ -228,7 +228,7 @@ def _run_rootfs_shell(
 
 def _proxy_env(env: dict[str, str]) -> dict[str, str]:
     proxy_env = env.copy()
-    proxy_env["AGEOS_LOG_LEVEL"] = "info"
+    proxy_env["BUBBLEHUB_LOG_LEVEL"] = "info"
     return proxy_env
 
 
@@ -251,12 +251,12 @@ def _apply_access_policy_for_url(env: dict[str, str], agent_id: str, url: str, *
 
 
 def _assert_proxy_denied_output(output: str, method: str, url: str) -> None:
-    assert "AgeOS proxy denied the request" in output
+    assert "BubbleHub proxy denied the request" in output
     assert f"http proxy denied:method={method} url={url}" in output
 
 
 def _assert_proxy_log_prefix(output: str, method: str, url_prefix: str) -> None:
-    assert "AgeOS proxy denied the request" in output or "403" in output
+    assert "BubbleHub proxy denied the request" in output or "403" in output
     assert f"http proxy denied:method={method} url={url_prefix}" in output
 
 
@@ -268,7 +268,7 @@ def _run_mcp_agent(
     extra_args: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [
-        "ageos",
+        "bubblehub",
         "run",
         "--memory",
         "4G",
@@ -338,7 +338,7 @@ def _openclaw_shell_command(openclaw_root: Path, args: list[str], *, allow_netwo
 
 def _openclaw_shell_script_command(openclaw_root: Path, script: str, *, allow_network: bool = False) -> list[str]:
     command = [
-        "ageos",
+        "bubblehub",
         "run",
         "--memory",
         "4G",
@@ -362,7 +362,7 @@ def _openclaw_toolchain_env_script() -> str:
     return "\n".join(
         [
             "set -eu",
-            'TOOLCHAIN="$AGEOS_WORKSPACE/.ageos-toolchain"',
+            'TOOLCHAIN="$BUBBLEHUB_WORKSPACE/.bubblehub-toolchain"',
             f'NODE_HOME="$TOOLCHAIN/node-v{OPENCLAW_NODE_VERSION}"',
             'NPM_CONFIG_PREFIX="$TOOLCHAIN/npm-global"',
             "export NPM_CONFIG_PREFIX",
@@ -382,7 +382,7 @@ def _openclaw_toolchain_script() -> str:
     return "\n".join(
         [
             "set -eu",
-            'TOOLCHAIN="$AGEOS_WORKSPACE/.ageos-toolchain"',
+            'TOOLCHAIN="$BUBBLEHUB_WORKSPACE/.bubblehub-toolchain"',
             f'NODE_HOME="$TOOLCHAIN/node-v{OPENCLAW_NODE_VERSION}"',
             'NPM_CONFIG_PREFIX="$TOOLCHAIN/npm-global"',
             "export NPM_CONFIG_PREFIX",
@@ -432,11 +432,11 @@ def _openclaw_onboard_command(openclaw_root: Path) -> list[str]:
             "--custom-base-url",
             "http://127.0.0.1:8000/v1",
             "--custom-api-key",
-            "ageos-local",
+            "bubblehub-local",
             "--custom-model-id",
             "default-instruct",
             "--custom-provider-id",
-            "ageos-ci",
+            "bubblehub-ci",
             "--custom-compatibility",
             "openai",
             "--skip-daemon",
@@ -458,7 +458,7 @@ def test_basic_agent_gets_model_response(
 ) -> None:
     result = _run_basic_agent(integration_workspace_factory(tmp_path, "basic-agent"), env=integration_env)
 
-    assert "AgeOS basic agent starting" in result.stdout
+    assert "BubbleHub basic agent starting" in result.stdout
     assert "model_response:" in result.stdout
     marker_index = result.stdout.index("model_response:")
     response = result.stdout[marker_index:].splitlines()[1].strip()
@@ -479,7 +479,7 @@ def test_basic_agent_home_persists_across_runs(
     assert "Persistent sandbox found: reusing" in second.stdout
     assert "existing_home_data=<missing>" in first.stdout
     assert "existing_home_data=Hello, world!" in second.stdout
-    persisted = root_dir / ".ageos" / "agents" / agent_id / "home" / "test.txt"
+    persisted = root_dir / ".bubblehub" / "agents" / agent_id / "home" / "test.txt"
     assert persisted.read_text(encoding="utf-8") == "Hello, world!"
 
 
@@ -497,8 +497,8 @@ def test_basic_agent_force_new_sandbox_starts_with_fresh_home(
     assert second_agent_id != first_agent_id
     assert "Persistent sandbox found" not in second.stdout
     assert "existing_home_data=<missing>" in second.stdout
-    assert not (root_dir / ".ageos" / "agents" / first_agent_id).exists()
-    assert (root_dir / ".ageos" / "agents" / second_agent_id / "home" / "test.txt").exists()
+    assert not (root_dir / ".bubblehub" / "agents" / first_agent_id).exists()
+    assert (root_dir / ".bubblehub" / "agents" / second_agent_id / "home" / "test.txt").exists()
 
 
 def test_ubuntu_rootfs_overlay_environment_and_private_copyup(
@@ -508,7 +508,7 @@ def test_ubuntu_rootfs_overlay_environment_and_private_copyup(
 ) -> None:
     rootfs = _rootfs_path(integration_env)
     root_dir = integration_workspace_factory(tmp_path, "ubuntu-overfs")
-    marker = rootfs / "etc" / "ageos-overfs-integration"
+    marker = rootfs / "etc" / "bubblehub-overfs-integration"
 
     first = _run_rootfs_shell(
         root_dir,
@@ -517,21 +517,21 @@ def test_ubuntu_rootfs_overlay_environment_and_private_copyup(
             "set -eu; "
             ". /etc/os-release; "
             'test "$VERSION_ID" = "26.04"; '
-            'test "$AGEOS_ROOTFS_RELEASE" = "ubuntu-26.04"; '
-            'test "$AGEOS_WORKSPACE" = "$HOME/workspace"; '
-            "printf private > /etc/ageos-overfs-integration; "
+            'test "$BUBBLEHUB_ROOTFS_RELEASE" = "ubuntu-26.04"; '
+            'test "$BUBBLEHUB_WORKSPACE" = "$HOME/workspace"; '
+            "printf private > /etc/bubblehub-overfs-integration; "
             "printf 'rootfs=%s\\n' \"$PRETTY_NAME\""
         ),
     )
     _run_rootfs_shell(
         root_dir,
         env=integration_env,
-        script='set -eu; test "$(cat /etc/ageos-overfs-integration)" = private',
+        script='set -eu; test "$(cat /etc/bubblehub-overfs-integration)" = private',
     )
-    agent_id = (root_dir / ".ageos" / "current-agent").read_text(encoding="utf-8").strip()
-    upper_file = root_dir / ".ageos" / "agents" / agent_id / "overlay" / "upper" / "etc" / "ageos-overfs-integration"
+    agent_id = (root_dir / ".bubblehub" / "current-agent").read_text(encoding="utf-8").strip()
+    upper_file = root_dir / ".bubblehub" / "agents" / agent_id / "overlay" / "upper" / "etc" / "bubblehub-overfs-integration"
 
-    assert (root_dir / ".ageos" / "current-agent").read_text(encoding="utf-8").strip() == agent_id
+    assert (root_dir / ".bubblehub" / "current-agent").read_text(encoding="utf-8").strip() == agent_id
     assert "Ubuntu 26.04" in first.stdout
     assert upper_file.read_text(encoding="utf-8") == "private"
     assert not marker.exists()
@@ -539,33 +539,33 @@ def test_ubuntu_rootfs_overlay_environment_and_private_copyup(
     _run_rootfs_shell(
         root_dir,
         env=integration_env,
-        script="set -eu; test ! -e /etc/ageos-overfs-integration",
+        script="set -eu; test ! -e /etc/bubblehub-overfs-integration",
         force_new_sandbox=True,
     )
-    reset_agent_id = (root_dir / ".ageos" / "current-agent").read_text(encoding="utf-8").strip()
+    reset_agent_id = (root_dir / ".bubblehub" / "current-agent").read_text(encoding="utf-8").strip()
     assert reset_agent_id != agent_id
 
 
-def test_ageos_cli_runs_inside_ubuntu_rootfs_sandbox(
+def test_bubblehub_cli_runs_inside_ubuntu_rootfs_sandbox(
     integration_env: dict[str, str],
     tmp_path: Path,
     integration_workspace_factory: Callable[[Path, str], Path],
 ) -> None:
-    root_dir = integration_workspace_factory(tmp_path, "nested-ageos-cli")
+    root_dir = integration_workspace_factory(tmp_path, "nested-bubblehub-cli")
 
     result = _run_rootfs_shell(
         root_dir,
         env=integration_env,
         script=(
             "set -eu; "
-            'help_output="$(ageos --help)"; '
+            'help_output="$(bubblehub --help)"; '
             "printf '%s\\n' \"$help_output\"; "
-            "printf '%s\\n' \"$help_output\" | grep -q 'AgeOS local agent runtime'; "
-            "ageos --version | grep -q '^ageos '"
+            "printf '%s\\n' \"$help_output\" | grep -q 'BubbleHub local agent runtime'; "
+            "bubblehub --version | grep -q '^bubblehub '"
         ),
     )
 
-    assert "AgeOS local agent runtime" in result.stdout
+    assert "BubbleHub local agent runtime" in result.stdout
 
 
 def test_internal_tool_web_access_is_denied_by_proxy(
@@ -589,7 +589,7 @@ def test_internal_tool_web_access_is_denied_by_proxy(
 
     result = _run(
         [
-            "ageos",
+            "bubblehub",
             "run",
             "--memory",
             "4G",
@@ -678,7 +678,7 @@ def test_mcp_agent_http_host_mcp_uses_persisted_access_approval(
             env=integration_env,
             extra_args=["--addition", "--a", "1", "--b", "2"],
         )
-        agent_id = (root_dir / ".ageos" / "current-agent").read_text(encoding="utf-8").strip()
+        agent_id = (root_dir / ".bubblehub" / "current-agent").read_text(encoding="utf-8").strip()
         _apply_access_policy_for_url(integration_env, agent_id, target_url, method="POST", policy="always")
 
         result = _run_mcp_agent(
@@ -764,14 +764,14 @@ def test_tenant_unset_proxy_env_cannot_bypass_network_in_rootfs(
         script=(
             "set -eu; "
             'test -n "$HTTP_PROXY"; '
-            "unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy AGEOS_HTTP_PROXY_PORT NO_PROXY no_proxy; "
+            "unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy BUBBLEHUB_HTTP_PROXY_PORT NO_PROXY no_proxy; "
             f"if curl -fsS --max-time 3 {target_url} >/dev/null 2>&1; then exit 9; fi; "
             f"if curl -fsS --noproxy '*' --max-time 3 {target_url} >/dev/null 2>&1; then exit 10; fi; "
             "python3 - <<'PY'\n"
             "import os\n"
             "import urllib.request\n"
             "for key in list(os.environ):\n"
-            "    if key.startswith('AGEOS_') or 'proxy' in key.lower():\n"
+            "    if key.startswith('BUBBLEHUB_') or 'proxy' in key.lower():\n"
             "        os.environ.pop(key, None)\n"
             "try:\n"
             f"    urllib.request.urlopen('{target_url}', timeout=3).read()\n"
@@ -826,7 +826,7 @@ def test_sandbox_installs_openclaw_with_nvm_and_npm(
 
 def test_openclaw_setup_runs_with_network_allowed_sandbox(integration_env: dict[str, str], openclaw_sandbox_state: tuple[Path, str]) -> None:
     openclaw_root, agent_id = openclaw_sandbox_state
-    state_root = openclaw_root / ".ageos"
+    state_root = openclaw_root / ".bubblehub"
     config_path = state_root / "agents" / agent_id / "home" / ".openclaw" / "openclaw.json"
 
     result = _run(
@@ -841,7 +841,7 @@ def test_openclaw_setup_runs_with_network_allowed_sandbox(integration_env: dict[
 
 def test_openclaw_onboard_configures_local_inference(integration_env: dict[str, str], openclaw_sandbox_state: tuple[Path, str]) -> None:
     openclaw_root, agent_id = openclaw_sandbox_state
-    state_root = openclaw_root / ".ageos"
+    state_root = openclaw_root / ".bubblehub"
     config_path = state_root / "agents" / agent_id / "home" / ".openclaw" / "openclaw.json"
 
     _run(
@@ -862,7 +862,7 @@ def test_openclaw_onboard_configures_local_inference(integration_env: dict[str, 
 
 def test_openclaw_reuses_configured_sandbox_without_reset(integration_env: dict[str, str], openclaw_sandbox_state: tuple[Path, str]) -> None:
     openclaw_root, agent_id = openclaw_sandbox_state
-    state_root = openclaw_root / ".ageos"
+    state_root = openclaw_root / ".bubblehub"
     _run(_openclaw_onboard_command(openclaw_root), env=integration_env, timeout=240)
 
     first = _run(_openclaw_command(openclaw_root, ["config", "validate", "--json"]), env=integration_env, timeout=240)

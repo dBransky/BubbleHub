@@ -13,8 +13,8 @@ import requests
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Minimal AgeOS MCP example agent.")
-    parser.add_argument("--query", default="ageos runtime", help="Search query to send to the MCP tool.")
+    parser = argparse.ArgumentParser(description="Minimal BubbleHub MCP example agent.")
+    parser.add_argument("--query", default="bubblehub runtime", help="Search query to send to the MCP tool.")
     parser.add_argument("--http-url", help="HTTP MCP endpoint to call instead of the stdio tool.")
     parser.add_argument(
         "--direct-url",
@@ -46,7 +46,7 @@ def main() -> int:
         text = call_stdio_tool(args.query)
         print(f"mcp_stdio_result: {text}")
 
-    if os.environ.get("AGEOS_EXPECT_PROXY_DENY") == "1" and "403" not in text:
+    if os.environ.get("BUBBLEHUB_EXPECT_PROXY_DENY") == "1" and "403" not in text:
         print(f"expected proxy denial, got: {text}", file=sys.stderr)
         return 2
     return 0
@@ -99,7 +99,7 @@ def call_stdio_mcp(tool_path: Path, tool_name: str, arguments: dict[str, Any]) -
                 "params": {
                     "protocolVersion": "2025-06-18",
                     "capabilities": {},
-                    "clientInfo": {"name": "ageos-simple-agent", "version": "0.1.0"},
+                    "clientInfo": {"name": "bubblehub-simple-agent", "version": "0.1.0"},
                 },
             },
         )
@@ -163,7 +163,7 @@ def call_http_mcp(url: str, query: str) -> str:
 def proxy_config() -> dict[str, str] | None:
     proxy_url = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
     if not proxy_url:
-        port = os.environ.get("AGEOS_HTTP_PROXY_PORT")
+        port = os.environ.get("BUBBLEHUB_HTTP_PROXY_PORT")
         if port:
             proxy_url = f"http://127.0.0.1:{port}"
     if not proxy_url:

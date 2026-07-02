@@ -5,24 +5,24 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 . "$ROOT/scripts/install-ui.sh"
-AGEOS_INSTALL_APP="$(ageos_resolve_desktop_app_choice)"
-export AGEOS_INSTALL_APP
-if [[ "$AGEOS_INSTALL_APP" == "1" ]]; then
-  export AGEOS_SKIP_TAURI=0
+BUBBLEHUB_INSTALL_APP="$(bubblehub_resolve_desktop_app_choice)"
+export BUBBLEHUB_INSTALL_APP
+if [[ "$BUBBLEHUB_INSTALL_APP" == "1" ]]; then
+  export BUBBLEHUB_SKIP_TAURI=0
 else
-  export AGEOS_SKIP_TAURI=1
+  export BUBBLEHUB_SKIP_TAURI=1
 fi
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-INSTALL_PREFIX="${AGEOS_PREFIX:-/opt/ageos}"
-BIN_DIR="${AGEOS_BIN_DIR:-/usr/local/bin}"
-BUILD_DIR="$ROOT/libageos/build"
-C_SOURCE_DIR="$ROOT/libageos"
+INSTALL_PREFIX="${BUBBLEHUB_PREFIX:-/opt/bubblehub}"
+BIN_DIR="${BUBBLEHUB_BIN_DIR:-/usr/local/bin}"
+BUILD_DIR="$ROOT/libbubblehub/build"
+C_SOURCE_DIR="$ROOT/libbubblehub"
 SUDO="${SUDO:-sudo}"
-AGEOS_GPU_MODE="${AGEOS_GPU:-auto}"
-ROOTFS_DIR="${AGEOS_ROOTFS_DIR:-$INSTALL_PREFIX/rootfs/ubuntu-26.04}"
-ROOTFS_SUITE="${AGEOS_ROOTFS_SUITE:-resolute}"
-ROOTFS_VERSION="${AGEOS_ROOTFS_VERSION:-26.04}"
+BUBBLEHUB_GPU_MODE="${BUBBLEHUB_GPU:-auto}"
+ROOTFS_DIR="${BUBBLEHUB_ROOTFS_DIR:-$INSTALL_PREFIX/rootfs/ubuntu-26.04}"
+ROOTFS_SUITE="${BUBBLEHUB_ROOTFS_SUITE:-resolute}"
+ROOTFS_VERSION="${BUBBLEHUB_ROOTFS_VERSION:-26.04}"
 NATIVE_STAGE=""
 PY_WHEEL_DIR=""
 PY_BUILD_ENV=""
@@ -51,7 +51,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "$(uname -s)" != "Linux" ]]; then
-  echo "AgeOS system-wide source install is Linux-only." >&2
+  echo "BubbleHub system-wide source install is Linux-only." >&2
   echo "Use the packaged CLI on Linux or set up a development venv manually on this platform." >&2
   exit 1
 fi
@@ -66,13 +66,13 @@ if ! command -v meson >/dev/null 2>&1; then
 fi
 
 rootfs_is_current() {
-  local stamp="$ROOTFS_DIR/.ageos-rootfs.json"
+  local stamp="$ROOTFS_DIR/.bubblehub-rootfs.json"
   [[ -f "$stamp" ]] &&
     grep -q "\"suite\": \"${ROOTFS_SUITE}\"" "$stamp" &&
     grep -q "\"version\": \"${ROOTFS_VERSION}\"" "$stamp"
 }
 
-echo "Building native AgeOS core..."
+echo "Building native BubbleHub core..."
 if [[ -f "$BUILD_DIR/meson-private/coredata.dat" ]]; then
   meson setup "$BUILD_DIR" "$C_SOURCE_DIR" --wipe --prefix=/usr/local
 else
@@ -84,39 +84,39 @@ NATIVE_STAGE="$(mktemp -d)"
 meson install -C "$BUILD_DIR" --no-rebuild --destdir "$NATIVE_STAGE"
 ${SUDO} mkdir -p /usr/local
 ${SUDO} cp -a --remove-destination "$NATIVE_STAGE/usr/local/." /usr/local/
-if [[ -x /usr/local/bin/ageos-sandbox ]]; then
-  ${SUDO} chown root:root /usr/local/bin/ageos-sandbox
-  ${SUDO} chmod 4755 /usr/local/bin/ageos-sandbox
+if [[ -x /usr/local/bin/bubblehub-sandbox ]]; then
+  ${SUDO} chown root:root /usr/local/bin/bubblehub-sandbox
+  ${SUDO} chmod 4755 /usr/local/bin/bubblehub-sandbox
 fi
 if command -v ldconfig >/dev/null 2>&1; then
   ${SUDO} ldconfig
 fi
 
-echo "Building AgeOS Python wheel..."
+echo "Building BubbleHub Python wheel..."
 PY_WHEEL_DIR="$(mktemp -d)"
 PY_BUILD_ENV="$(mktemp -d)"
 "$PYTHON_BIN" -m venv "$PY_BUILD_ENV"
 "$PY_BUILD_ENV/bin/python" -m pip install --upgrade pip build
 "$PY_BUILD_ENV/bin/python" -m build --wheel --outdir "$PY_WHEEL_DIR" "$ROOT"
 shopt -s nullglob
-AGEOS_WHEELS=("$PY_WHEEL_DIR"/ageos-*.whl)
+BUBBLEHUB_WHEELS=("$PY_WHEEL_DIR"/bubblehub-*.whl)
 shopt -u nullglob
-if [[ ${#AGEOS_WHEELS[@]} -eq 0 ]]; then
-  echo "Failed to build AgeOS wheel." >&2
+if [[ ${#BUBBLEHUB_WHEELS[@]} -eq 0 ]]; then
+  echo "Failed to build BubbleHub wheel." >&2
   exit 1
 fi
-AGEOS_WHEEL="${AGEOS_WHEELS[0]}"
-AGEOS_WHEEL_BASE="${AGEOS_WHEEL##*/}"
-AGEOS_VERSION="${AGEOS_WHEEL_BASE#ageos-}"
-AGEOS_VERSION="${AGEOS_VERSION%%-py3-*}"
-AGEOS_VERSION="${AGEOS_VERSION%%-cp*}"
-AGEOS_VERSION="${AGEOS_VERSION%%.whl}"
+BUBBLEHUB_WHEEL="${BUBBLEHUB_WHEELS[0]}"
+BUBBLEHUB_WHEEL_BASE="${BUBBLEHUB_WHEEL##*/}"
+BUBBLEHUB_VERSION="${BUBBLEHUB_WHEEL_BASE#bubblehub-}"
+BUBBLEHUB_VERSION="${BUBBLEHUB_VERSION%%-py3-*}"
+BUBBLEHUB_VERSION="${BUBBLEHUB_VERSION%%-cp*}"
+BUBBLEHUB_VERSION="${BUBBLEHUB_VERSION%%.whl}"
 
-echo "Installing AgeOS Python runtime into ${INSTALL_PREFIX}..."
-if [[ "${AGEOS_SKIP_ROOTFS:-0}" != "1" ]] && rootfs_is_current; then
+echo "Installing BubbleHub Python runtime into ${INSTALL_PREFIX}..."
+if [[ "${BUBBLEHUB_SKIP_ROOTFS:-0}" != "1" ]] && rootfs_is_current; then
   PRESERVED_ROOTFS_PARENT="$(mktemp -d)"
   PRESERVED_ROOTFS="$PRESERVED_ROOTFS_PARENT/ubuntu-26.04"
-  echo "Preserving existing AgeOS Ubuntu rootfs for fast rebuild: ${ROOTFS_DIR}"
+  echo "Preserving existing BubbleHub Ubuntu rootfs for fast rebuild: ${ROOTFS_DIR}"
   ${SUDO} mv "$ROOTFS_DIR" "$PRESERVED_ROOTFS"
 fi
 ${SUDO} rm -rf "$INSTALL_PREFIX"
@@ -128,56 +128,56 @@ if [[ -n "$PRESERVED_ROOTFS" ]]; then
 fi
 ${SUDO} "$PYTHON_BIN" -m venv "$INSTALL_PREFIX"
 ${SUDO} "$INSTALL_PREFIX/bin/python" -m pip install --upgrade pip
-${SUDO} "$INSTALL_PREFIX/bin/python" -m pip install --no-deps "${AGEOS_WHEELS[0]}"
+${SUDO} "$INSTALL_PREFIX/bin/python" -m pip install --no-deps "${BUBBLEHUB_WHEELS[0]}"
 ${SUDO} "$INSTALL_PREFIX/bin/python" -m pip install \
   --find-links "$PY_WHEEL_DIR" \
-  "ageos[examples]==${AGEOS_VERSION}"
-${SUDO} env AGEOS_GPU="$AGEOS_GPU_MODE" "$INSTALL_PREFIX/bin/python" -m ageos.gpu_setup \
-  --mode "$AGEOS_GPU_MODE" \
-  --wheel "${AGEOS_WHEELS[0]}" \
+  "bubblehub[examples]==${BUBBLEHUB_VERSION}"
+${SUDO} env BUBBLEHUB_GPU="$BUBBLEHUB_GPU_MODE" "$INSTALL_PREFIX/bin/python" -m bubblehub.gpu_setup \
+  --mode "$BUBBLEHUB_GPU_MODE" \
+  --wheel "${BUBBLEHUB_WHEELS[0]}" \
   --profile-out "$INSTALL_PREFIX/install-profile.json"
-${SUDO} mv "$INSTALL_PREFIX/bin/ageos" "$INSTALL_PREFIX/bin/ageos-entrypoint"
-${SUDO} mv "$INSTALL_PREFIX/bin/ageos-node" "$INSTALL_PREFIX/bin/ageos-node-entrypoint"
+${SUDO} mv "$INSTALL_PREFIX/bin/bubblehub" "$INSTALL_PREFIX/bin/bubblehub-entrypoint"
+${SUDO} mv "$INSTALL_PREFIX/bin/bubblehub-node" "$INSTALL_PREFIX/bin/bubblehub-node-entrypoint"
 
-echo "Linking global AgeOS commands into ${BIN_DIR}..."
+echo "Linking global BubbleHub commands into ${BIN_DIR}..."
 ${SUDO} mkdir -p "$BIN_DIR"
-${SUDO} rm -f "$BIN_DIR/ageos" "$BIN_DIR/ageos-node"
-${SUDO} tee "$BIN_DIR/ageos" >/dev/null <<EOF
+${SUDO} rm -f "$BIN_DIR/bubblehub" "$BIN_DIR/bubblehub-node"
+${SUDO} tee "$BIN_DIR/bubblehub" >/dev/null <<EOF
 #!/usr/bin/env bash
-exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("AGEOS_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path(sys.prefix) / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "ageos").is_dir()]; sys.argv[0] = "ageos"; from ageos.cli.main import run_cli; run_cli()' "\$@"
+exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("BUBBLEHUB_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path(sys.prefix) / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "bubblehub").is_dir()]; sys.argv[0] = "bubblehub"; from bubblehub.cli.main import run_cli; run_cli()' "\$@"
 EOF
-${SUDO} chmod 0755 "$BIN_DIR/ageos"
-${SUDO} tee "$BIN_DIR/ageos-node" >/dev/null <<EOF
+${SUDO} chmod 0755 "$BIN_DIR/bubblehub"
+${SUDO} tee "$BIN_DIR/bubblehub-node" >/dev/null <<EOF
 #!/usr/bin/env bash
-exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("AGEOS_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path(sys.prefix) / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "ageos").is_dir()]; sys.argv[0] = "ageos-node"; from ageos.node.daemon import main; raise SystemExit(main())' "\$@"
+exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("BUBBLEHUB_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path(sys.prefix) / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "bubblehub").is_dir()]; sys.argv[0] = "bubblehub-node"; from bubblehub.node.daemon import main; raise SystemExit(main())' "\$@"
 EOF
-${SUDO} chmod 0755 "$BIN_DIR/ageos-node"
+${SUDO} chmod 0755 "$BIN_DIR/bubblehub-node"
 ${SUDO} ln -sf "$INSTALL_PREFIX/bin/pytest" "$BIN_DIR/pytest"
-if [[ -x /usr/local/bin/ageos-sandbox && "$BIN_DIR/ageos-sandbox" != "/usr/local/bin/ageos-sandbox" ]]; then
-  ${SUDO} ln -sf /usr/local/bin/ageos-sandbox "$BIN_DIR/ageos-sandbox"
+if [[ -x /usr/local/bin/bubblehub-sandbox && "$BIN_DIR/bubblehub-sandbox" != "/usr/local/bin/bubblehub-sandbox" ]]; then
+  ${SUDO} ln -sf /usr/local/bin/bubblehub-sandbox "$BIN_DIR/bubblehub-sandbox"
 fi
 
-if [[ "${AGEOS_INSTALL_APP:-1}" != "0" && "${AGEOS_SKIP_TAURI:-0}" != "1" ]]; then
+if [[ "${BUBBLEHUB_INSTALL_APP:-1}" != "0" && "${BUBBLEHUB_SKIP_TAURI:-0}" != "1" ]]; then
   if ! command -v cargo >/dev/null 2>&1; then
-    echo "cargo not found. Run ./scripts/install-deps.sh first or set AGEOS_SKIP_TAURI=1." >&2
+    echo "cargo not found. Run ./scripts/install-deps.sh first or set BUBBLEHUB_SKIP_TAURI=1." >&2
     exit 1
   fi
-  echo "Building AgeOS Control Center Tauri desktop app..."
+  echo "Building BubbleHub Control Center Tauri desktop app..."
   "$ROOT/scripts/ci/build-tauri-app.sh"
-  ${SUDO} install -m 0755 "$ROOT/app/target/release/ageos-control-center" "$BIN_DIR/ageos-control-center"
+  ${SUDO} install -m 0755 "$ROOT/app/target/release/bubblehub-control-center" "$BIN_DIR/bubblehub-control-center"
 fi
 
-if [[ "${AGEOS_SKIP_ROOTFS:-0}" == "1" ]]; then
-  echo "Skipping AgeOS Ubuntu rootfs because AGEOS_SKIP_ROOTFS=1."
+if [[ "${BUBBLEHUB_SKIP_ROOTFS:-0}" == "1" ]]; then
+  echo "Skipping BubbleHub Ubuntu rootfs because BUBBLEHUB_SKIP_ROOTFS=1."
 elif rootfs_is_current; then
-  echo "AgeOS Ubuntu rootfs already exists at ${ROOTFS_DIR}; skipping rootfs creation."
+  echo "BubbleHub Ubuntu rootfs already exists at ${ROOTFS_DIR}; skipping rootfs creation."
 else
-  echo "Creating AgeOS Ubuntu rootfs..."
-  AGEOS_ROOTFS_DIR="$ROOTFS_DIR" SUDO="$SUDO" "$ROOT/scripts/create-rootfs.sh"
+  echo "Creating BubbleHub Ubuntu rootfs..."
+  BUBBLEHUB_ROOTFS_DIR="$ROOTFS_DIR" SUDO="$SUDO" "$ROOT/scripts/create-rootfs.sh"
 fi
 
-ageos_run_base_model_setup
+bubblehub_run_base_model_setup
 
 echo
-echo "AgeOS system install is ready."
-echo "Run: ageos --help"
+echo "BubbleHub system install is ready."
+echo "Run: bubblehub --help"

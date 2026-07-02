@@ -1,8 +1,8 @@
 [package]
-name = "ageos-control-center"
+name = "bubblehub-control-center"
 version = "0.1.0"
-description = "AgeOS Control Center desktop app"
-authors = ["AgeOS"]
+description = "BubbleHub Control Center desktop app"
+authors = ["BubbleHub"]
 license = "MIT"
 edition = "2021"
 build = "build.rs"

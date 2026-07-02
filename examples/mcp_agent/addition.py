@@ -29,7 +29,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             request_id,
             {
                 "protocolVersion": "2025-06-18",
-                "serverInfo": {"name": "ageos-addition", "version": "0.1.0"},
+                "serverInfo": {"name": "bubblehub-addition", "version": "0.1.0"},
                 "capabilities": {"tools": {}},
             },
         )

@@ -1,6 +1,6 @@
-# Contributing to AgeOS
+# Contributing to BubbleHub
 
-Thank you for your interest in contributing to AgeOS!
+Thank you for your interest in contributing to BubbleHub!
 
 ## Getting Started
 
@@ -8,14 +8,14 @@ Thank you for your interest in contributing to AgeOS!
 2. Clone your fork locally:
 
 ```bash
-git clone https://github.com/<your-username>/ageos-runtime.git
-cd ageos-runtime
+git clone https://github.com/<your-username>/BubbleHub.git
+cd BubbleHub
 ```
 
 3. Add the upstream repository:
 
 ```bash
-git remote add upstream https://github.com/ageos-labs/ageos-runtime.git
+git remote add upstream https://github.com/bublhub/BubbleHub.git
 ```
 
 4. Install the development tooling used by CI and local hooks:
@@ -79,34 +79,34 @@ Before opening a pull request, run the same tests used in CI.
 
 ### Unit Tests
 
-CI runs libageos C unit tests and Python unit tests together:
+CI runs libbubblehub C unit tests and Python unit tests together:
 
 ```bash
-docker build -f docker/Dockerfile --target unit-test -t ageos-runtime:unit .
-docker run --rm --privileged --security-opt seccomp=unconfined ageos-runtime:unit
+docker build -f docker/Dockerfile --target unit-test -t bubblehub:unit .
+docker run --rm --privileged --security-opt seccomp=unconfined bubblehub:unit
 ```
 
-To run only the libageos Meson tests locally:
+To run only the libbubblehub Meson tests locally:
 
 ```bash
-meson setup libageos/build libageos --prefix=/usr/local
-meson compile -C libageos/build
-meson test -C libageos/build --print-errorlogs
+meson setup libbubblehub/build libbubblehub --prefix=/usr/local
+meson compile -C libbubblehub/build
+meson test -C libbubblehub/build --print-errorlogs
 ```
 
-C tests live under `libageos/tests/` and link against the built `libageos.so`. Mount-related overfs tests require privileges and skip automatically in unprivileged environments; CI runs them inside the privileged Docker unit-test image.
+C tests live under `libbubblehub/tests/` and link against the built `libbubblehub.so`. Mount-related overfs tests require privileges and skip automatically in unprivileged environments; CI runs them inside the privileged Docker unit-test image.
 
 ### Coverage
 
-CI uploads C and Python Cobertura reports to [Codecov](https://codecov.io/gh/ageos-labs/ageos-runtime). The project target is 45% line coverage (see `codecov.yml`). To reproduce the coverage run locally:
+CI uploads C and Python Cobertura reports to [Codecov](https://codecov.io/gh/bublhub/BubbleHub). The project target is 45% line coverage (see `codecov.yml`). To reproduce the coverage run locally:
 
 ```bash
 docker build -f docker/Dockerfile --target unit-test \
-  --build-arg MESON_COVERAGE=true -t ageos-runtime:unit-cov .
+  --build-arg MESON_COVERAGE=true -t bubblehub:unit-cov .
 mkdir -p .ci-artifacts/coverage
 docker run --rm --privileged --security-opt seccomp=unconfined \
   -v "$PWD/.ci-artifacts/coverage:/coverage-out" \
-  ageos-runtime:unit-cov scripts/ci/run-unit-tests-coverage.sh
+  bubblehub:unit-cov scripts/ci/run-unit-tests-coverage.sh
 ```
 
 HTML reports are written under `.ci-artifacts/coverage/`. CI also keeps those reports as workflow artifacts; Codecov provides the dashboard, PR comments, and README badge.
@@ -114,15 +114,15 @@ HTML reports are written under `.ci-artifacts/coverage/`. CI also keeps those re
 ### Integration Tests
 
 ```bash
-docker volume create ageos-cache-local
-docker volume create ageos-openclaw-local
+docker volume create bubblehub-cache-local
+docker volume create bubblehub-openclaw-local
 
-docker build -f docker/Dockerfile --target integration-test -t ageos-runtime:integration .
+docker build -f docker/Dockerfile --target integration-test -t bubblehub:integration .
 
 docker run --rm --privileged --security-opt seccomp=unconfined \
-  -v ageos-cache-local:/cache/ageos \
-  -v ageos-openclaw-local:/cache/openclaw \
-  ageos-runtime:integration
+  -v bubblehub-cache-local:/cache/bubblehub \
+  -v bubblehub-openclaw-local:/cache/openclaw \
+  bubblehub:integration
 ```
 
 For an interactive shell in the same image (sandbox exploration, OpenClaw, MCP experiments), see [Interactive Docker Development](README.md#interactive-docker-development) in the README.
@@ -163,8 +163,8 @@ Summary:
 
 ## Community
 
-- Website: https://ageos.dev
+- Website: https://BubbleHub.ai
 - Discord: https://discord.gg/skwKqSgvD2
-- If you find AgeOS useful, consider starring the repository and joining the community.
+- If you find BubbleHub useful, consider starring the repository and joining the community.
 
-Thank you for contributing to AgeOS!
+Thank you for contributing to BubbleHub!

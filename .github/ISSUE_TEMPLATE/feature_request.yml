@@ -1,5 +1,5 @@
 name: Feature Request
-description: Suggest a new feature or improvement for AgeOS Runtime.
+description: Suggest a new feature or improvement for BubbleHub Runtime.
 title: "feat: "
 labels: ["enhancement"]
 body:
@@ -35,14 +35,14 @@ body:
     id: area
     attributes:
       label: Area
-      description: Which part of AgeOS Runtime does this request relate to?
+      description: Which part of BubbleHub Runtime does this request relate to?
       options:
         - Runtime core
         - Inference / model backend
         - Sandbox / security
         - Docker / containerisation
         - CLI / tooling
-        - Python API / libageos
+        - Python API / libbubblehub
         - Documentation
         - CI / testing
         - Other

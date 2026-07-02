@@ -4,7 +4,7 @@ from unittest.mock import Mock, patch
 
 from rich.console import Console
 
-from ageos.tui.dashboard import _agents_table, _manifest_scope_for_pending, _pending_access_label, _resolve_pending_access
+from bubblehub.tui.dashboard import _agents_table, _manifest_scope_for_pending, _pending_access_label, _resolve_pending_access
 
 
 def test_pending_access_label_includes_agent_method_and_target() -> None:
@@ -36,8 +36,8 @@ def test_resolve_pending_access_submits_choice_to_native_policy() -> None:
     client = Mock(native=native)
 
     with (
-        patch("ageos.tui.dashboard.SchedulerClient.local", return_value=client),
-        patch("ageos.tui.dashboard.Prompt.ask", return_value="always") as ask,
+        patch("bubblehub.tui.dashboard.SchedulerClient.local", return_value=client),
+        patch("bubblehub.tui.dashboard.Prompt.ask", return_value="always") as ask,
     ):
         _resolve_pending_access(Console(record=True))
 
@@ -66,8 +66,8 @@ def test_resolve_pending_access_ask_submits_manifest_policy() -> None:
     client = Mock(native=native)
 
     with (
-        patch("ageos.tui.dashboard.SchedulerClient.local", return_value=client),
-        patch("ageos.tui.dashboard.Prompt.ask", return_value="ask"),
+        patch("bubblehub.tui.dashboard.SchedulerClient.local", return_value=client),
+        patch("bubblehub.tui.dashboard.Prompt.ask", return_value="ask"),
     ):
         _resolve_pending_access(Console(record=True))
 

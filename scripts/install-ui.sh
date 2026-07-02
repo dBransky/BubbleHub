@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-ageos_install_choice_file() {
-  echo "${AGEOS_INSTALL_CHOICE_FILE:-.ageos-install-app-choice}"
+bubblehub_install_choice_file() {
+  echo "${BUBBLEHUB_INSTALL_CHOICE_FILE:-.bubblehub-install-app-choice}"
 }
 
-ageos_install_normalize_yes_no() {
+bubblehub_install_normalize_yes_no() {
   case "${1,,}" in
     1|true|yes|y|on)
       echo "1"
@@ -18,7 +18,7 @@ ageos_install_normalize_yes_no() {
   esac
 }
 
-ageos_show_desktop_app_config() {
+bubblehub_show_desktop_app_config() {
   cat >/dev/tty <<'EOF'
 
 Desktop app configuration
@@ -29,17 +29,17 @@ More install options will appear here soon:
   - GPU/runtime defaults
 
 For now, choose whether to install the Tauri desktop app or keep this
-installation CLI-only. After install finishes, AgeOS will ask you to choose
-your default base model unless you skip that step with AGEOS_SKIP_MODEL_SETUP=1.
+installation CLI-only. After install finishes, BubbleHub will ask you to choose
+your default base model unless you skip that step with BUBBLEHUB_SKIP_MODEL_SETUP=1.
 
 EOF
 }
 
-ageos_render_choice_options() {
+bubblehub_render_choice_options() {
   local selected="$1"
   local rewind="${2:-0}"
   local labels=(
-    "Install AgeOS Control Center desktop app"
+    "Install BubbleHub Control Center desktop app"
     "Use built-in CLI commands only"
     "Configure install options"
   )
@@ -60,21 +60,21 @@ ageos_render_choice_options() {
   done
 }
 
-ageos_prompt_desktop_app_install() {
+bubblehub_prompt_desktop_app_install() {
   local selected=0
   local rendered=0
   local key rest
   cat >/dev/tty <<'EOF'
 
-AgeOS installer
+BubbleHub installer
 We noticed you are using CLI install.
 Do you want to install the desktop app as well?
-You can always install it later by running: ageos app
+You can always install it later by running: bubblehub app
 
 Use Up/Down arrows and press Enter.
 EOF
   while true; do
-    ageos_render_choice_options "$selected" "$rendered"
+    bubblehub_render_choice_options "$selected" "$rendered"
     rendered=1
     IFS= read -rsn1 key </dev/tty || key=""
     case "$key" in
@@ -82,7 +82,7 @@ EOF
         case "$selected" in
           0) echo "1"; return ;;
           1) echo "0"; return ;;
-          2) ageos_show_desktop_app_config; rendered=0 ;;
+          2) bubblehub_show_desktop_app_config; rendered=0 ;;
         esac
         ;;
       $'\033')
@@ -107,29 +107,29 @@ EOF
         return
         ;;
       c|C)
-        ageos_show_desktop_app_config
+        bubblehub_show_desktop_app_config
         rendered=0
         ;;
     esac
   done
 }
 
-ageos_resolve_desktop_app_choice() {
+bubblehub_resolve_desktop_app_choice() {
   local explicit normalized choice_file choice
-  explicit="${AGEOS_INSTALL_APP:-}"
+  explicit="${BUBBLEHUB_INSTALL_APP:-}"
   if [[ -n "$explicit" ]]; then
-    normalized="$(ageos_install_normalize_yes_no "$explicit")"
+    normalized="$(bubblehub_install_normalize_yes_no "$explicit")"
     if [[ -n "$normalized" ]]; then
       echo "$normalized"
       return
     fi
-    echo "Invalid AGEOS_INSTALL_APP value: $explicit (expected yes/no)." >&2
+    echo "Invalid BUBBLEHUB_INSTALL_APP value: $explicit (expected yes/no)." >&2
     exit 1
   fi
 
-  choice_file="$(ageos_install_choice_file)"
+  choice_file="$(bubblehub_install_choice_file)"
   if [[ -f "$choice_file" ]]; then
-    normalized="$(ageos_install_normalize_yes_no "$(tr -d '[:space:]' < "$choice_file")")"
+    normalized="$(bubblehub_install_normalize_yes_no "$(tr -d '[:space:]' < "$choice_file")")"
     if [[ -n "$normalized" ]]; then
       echo "$normalized"
       return
@@ -141,22 +141,22 @@ ageos_resolve_desktop_app_choice() {
     return
   fi
 
-  choice="$(ageos_prompt_desktop_app_install)"
+  choice="$(bubblehub_prompt_desktop_app_install)"
   printf '%s\n' "$choice" > "$choice_file"
   echo "$choice"
 }
 
-ageos_run_base_model_setup() {
-  if [[ "${AGEOS_SKIP_MODEL_SETUP:-0}" == "1" ]]; then
+bubblehub_run_base_model_setup() {
+  if [[ "${BUBBLEHUB_SKIP_MODEL_SETUP:-0}" == "1" ]]; then
     return 0
   fi
   if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
     return 0
   fi
-  if ! command -v ageos >/dev/null 2>&1; then
+  if ! command -v bubblehub >/dev/null 2>&1; then
     return 0
   fi
   echo
-  echo "Choose your default base model for AgeOS."
-  ageos models setup </dev/tty >/dev/tty 2>&1 || true
+  echo "Choose your default base model for BubbleHub."
+  bubblehub models setup </dev/tty >/dev/tty 2>&1 || true
 }

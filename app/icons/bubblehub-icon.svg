@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000" role="img" aria-labelledby="title desc">
+  <title id="title">BubbleHub bubble icon</title>
+  <desc id="desc">Three pink bubbles with white highlights.</desc>
+  <defs>
+  <radialGradient id="bubblehubPink" cx="32%" cy="24%" r="72%">
+    <stop offset="0%" stop-color="#FFD7E6"/>
+    <stop offset="42%" stop-color="#FE9CBF"/>
+    <stop offset="100%" stop-color="#F76AA4"/>
+  </radialGradient>
+  <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+    <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity="0.20"/>
+  </filter>
+</defs>
+  <g filter="url(#softShadow)">
+  <circle cx="360" cy="580" r="250" fill="url(#bubblehubPink)"/>
+  <circle cx="655" cy="220" r="126" fill="url(#bubblehubPink)"/>
+  <circle cx="835" cy="490" r="74" fill="url(#bubblehubPink)"/>
+  <ellipse cx="232" cy="438" rx="92" ry="34" fill="#FFFFFF" opacity="0.92" transform="rotate(-39 232 438)"/>
+  <ellipse cx="594" cy="146" rx="43" ry="15" fill="#FFFFFF" opacity="0.92" transform="rotate(-37 594 146)"/>
+  <ellipse cx="796" cy="440" rx="29" ry="10" fill="#FFFFFF" opacity="0.92" transform="rotate(-37 796 440)"/>
+</g>
+</svg>

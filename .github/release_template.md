@@ -1,4 +1,4 @@
-# AgeOS vX.Y.Z
+# BubbleHub vX.Y.Z
 
 One-sentence summary of the release and why users should care.
 
@@ -30,47 +30,47 @@ One-sentence summary of the release and why users should care.
 
 Latest release asset base:
 ```text
-https://ageos.dev/download/latest
+https://BubbleHub.ai/download/latest
 ```
 
 Specific release asset base:
 ```text
-https://ageos.dev/download/vX.Y.Z
+https://BubbleHub.ai/download/vX.Y.Z
 ```
 
 Linux curl installer:
 ```bash
-curl -fsSL https://ageos.dev/install.sh | bash
+curl -fsSL https://bubblehub.ai/install.sh | bash
 ```
 
 Linux Debian package:
 ```bash
-curl -LO https://ageos.dev/download/latest/AgeOS-X.Y.Z-x64.deb
-sudo apt install ./AgeOS-X.Y.Z-x64.deb
+curl -LO https://bubblehub.ai/download/latest/BubbleHub-X.Y.Z-x64.deb
+sudo apt install ./BubbleHub-X.Y.Z-x64.deb
 ```
 
-Open the AgeOS Control Center Tauri desktop app after installing:
+Open the BubbleHub Control Center Tauri desktop app after installing:
 ```bash
-ageos app
+bubblehub app
 ```
 
 Windows PowerShell installer:
 ```powershell
-irm https://ageos.dev/install.ps1 | iex
+irm https://bubblehub.ai/install.ps1 | iex
 ```
 
-The Windows installer uses WSL for the Linux runtime and creates AgeOS Control Center Start Menu and Desktop shortcuts that launch the desktop app.
+The Windows installer uses WSL for the Linux runtime and creates BubbleHub Control Center Start Menu and Desktop shortcuts that launch the desktop app.
 
 Windows `.exe` bootstrapper:
 ```powershell
-irm https://ageos.dev/download/latest/AgeOS-X.Y.Z-x64.exe -OutFile AgeOS-X.Y.Z-x64.exe
-.\AgeOS-X.Y.Z-x64.exe
+irm https://bubblehub.ai/download/latest/BubbleHub-X.Y.Z-x64.exe -OutFile BubbleHub-X.Y.Z-x64.exe
+.\BubbleHub-X.Y.Z-x64.exe
 ```
 
 ## 🔗 Links
 
-🌐 Website → [AgeOS Labs](https://ageos-labs.com)
-💻 GitHub → [ageos-runtime](https://github.com/ageos-labs/ageos-runtime)
+🌐 Website → [BubbleHub](https://bubblehub.ai)
+💻 GitHub → [BubbleHub](https://github.com/bublhub/BubbleHub)
 💬 Discord → [Join community](https://discord.gg/skwKqSgvD2)
 
 ## ❤️ Contributors

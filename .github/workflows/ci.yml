@@ -39,7 +39,7 @@ jobs:
           file: docker/Dockerfile
           target: unit-test
           load: true
-          tags: ageos-runtime:unit-${{ github.sha }}
+          tags: bubblehub:unit-${{ github.sha }}
           cache-from: type=gha,scope=unit-test
           cache-to: type=gha,mode=max,scope=unit-test
           build-args: |
@@ -52,7 +52,7 @@ jobs:
             --privileged \
             --security-opt seccomp=unconfined \
             -v "${{ github.workspace }}/.ci-artifacts/coverage:/coverage-out" \
-            ageos-runtime:unit-${{ github.sha }} \
+            bubblehub:unit-${{ github.sha }} \
             scripts/ci/run-unit-tests-coverage.sh
 
       - name: Publish coverage summary
@@ -81,12 +81,12 @@ jobs:
     needs: unit-tests
     timeout-minutes: 60
     env:
-      AGEOS_RUN_INTEGRATION: "1"
-      AGEOS_CACHE: /cache/ageos
-      AGEOS_MODELS_CONFIG: /cache/ageos/ci-models.yaml
-      AGEOS_INTEGRATION_WORKSPACE_DIR: /cache/ageos/integration-workspaces
-      AGEOS_LLAMA_CTX_SIZE: "512"
-      AGEOS_MAX_OUTPUT_TOKENS: "32"
+      BUBBLEHUB_RUN_INTEGRATION: "1"
+      BUBBLEHUB_CACHE: /cache/bubblehub
+      BUBBLEHUB_MODELS_CONFIG: /cache/bubblehub/ci-models.yaml
+      BUBBLEHUB_INTEGRATION_WORKSPACE_DIR: /cache/bubblehub/integration-workspaces
+      BUBBLEHUB_LLAMA_CTX_SIZE: "512"
+      BUBBLEHUB_MAX_OUTPUT_TOKENS: "32"
       NO_PROXY: 127.0.0.1,localhost
       OPENCLAW_CACHE_DIR: /cache/openclaw
     steps:
@@ -97,10 +97,10 @@ jobs:
       - name: Restore model cache
         uses: actions/cache@v4
         with:
-          path: .ageos-cache
-          key: ageos-models-${{ runner.os }}-${{ hashFiles('scripts/ci/write-ci-model-config.sh') }}
+          path: .bubblehub-cache
+          key: bubblehub-models-${{ runner.os }}-${{ hashFiles('scripts/ci/write-ci-model-config.sh') }}
           restore-keys: |
-            ageos-models-${{ runner.os }}-
+            bubblehub-models-${{ runner.os }}-
 
       - name: Restore OpenClaw source cache
         uses: actions/cache@v4
@@ -112,8 +112,8 @@ jobs:
 
       - name: Prepare cache and artifact directories
         run: |
-          mkdir -p .ageos-cache/integration-workspaces .openclaw-cache .ci-artifacts
-          chmod -R a+rwX .ageos-cache .openclaw-cache
+          mkdir -p .bubblehub-cache/integration-workspaces .openclaw-cache .ci-artifacts
+          chmod -R a+rwX .bubblehub-cache .openclaw-cache
 
       - name: Build integration test image
         uses: docker/build-push-action@v6
@@ -122,7 +122,7 @@ jobs:
           file: docker/Dockerfile
           target: integration-test
           load: true
-          tags: ageos-runtime:integration-${{ github.sha }}
+          tags: bubblehub:integration-${{ github.sha }}
           cache-from: |
             type=gha,scope=integration-test
             type=gha,scope=unit-test
@@ -131,29 +131,29 @@ jobs:
       - name: Run integration tests
         run: |
           set +e
-          docker rm -f ageos-integration >/dev/null 2>&1 || true
+          docker rm -f bubblehub-integration >/dev/null 2>&1 || true
           docker run \
-            --name ageos-integration \
+            --name bubblehub-integration \
             --privileged \
             --security-opt seccomp=unconfined \
-            -e AGEOS_RUN_INTEGRATION \
-            -e AGEOS_CACHE \
-            -e AGEOS_MODELS_CONFIG \
-            -e AGEOS_INTEGRATION_WORKSPACE_DIR \
-            -e AGEOS_LLAMA_CTX_SIZE \
-            -e AGEOS_MAX_OUTPUT_TOKENS \
+            -e BUBBLEHUB_RUN_INTEGRATION \
+            -e BUBBLEHUB_CACHE \
+            -e BUBBLEHUB_MODELS_CONFIG \
+            -e BUBBLEHUB_INTEGRATION_WORKSPACE_DIR \
+            -e BUBBLEHUB_LLAMA_CTX_SIZE \
+            -e BUBBLEHUB_MAX_OUTPUT_TOKENS \
             -e NO_PROXY \
             -e OPENCLAW_CACHE_DIR \
-            -v "${{ github.workspace }}/.ageos-cache:/cache/ageos" \
+            -v "${{ github.workspace }}/.bubblehub-cache:/cache/bubblehub" \
             -v "${{ github.workspace }}/.openclaw-cache:/cache/openclaw" \
-            ageos-runtime:integration-${{ github.sha }}
+            bubblehub:integration-${{ github.sha }}
           status=$?
 
           mkdir -p .ci-artifacts
-          docker cp ageos-integration:/tmp .ci-artifacts/tmp >/dev/null 2>&1 || true
-          docker cp ageos-integration:/src/examples .ci-artifacts/examples >/dev/null 2>&1 || true
-          docker cp ageos-integration:/cache/ageos/integration-workspaces .ci-artifacts/integration-workspaces >/dev/null 2>&1 || true
-          docker rm -f ageos-integration >/dev/null 2>&1 || true
+          docker cp bubblehub-integration:/tmp .ci-artifacts/tmp >/dev/null 2>&1 || true
+          docker cp bubblehub-integration:/src/examples .ci-artifacts/examples >/dev/null 2>&1 || true
+          docker cp bubblehub-integration:/cache/bubblehub/integration-workspaces .ci-artifacts/integration-workspaces >/dev/null 2>&1 || true
+          docker rm -f bubblehub-integration >/dev/null 2>&1 || true
           exit "$status"
 
       - name: Upload integration logs
@@ -164,19 +164,19 @@ jobs:
           if-no-files-found: ignore
           include-hidden-files: true
           path: |
-            .ci-artifacts/tmp/ageos-llama-*.log
+            .ci-artifacts/tmp/bubblehub-llama-*.log
             .ci-artifacts/tmp/openclaw/*.log
-            .ci-artifacts/examples/**/.ageos/**/.openclaw/**/*.jsonl
-            .ci-artifacts/examples/**/.ageos/**/.openclaw/**/*.json
-            .ci-artifacts/integration-workspaces/**/.ageos/**/.openclaw/**/*.jsonl
-            .ci-artifacts/integration-workspaces/**/.ageos/**/.openclaw/**/*.json
+            .ci-artifacts/examples/**/.bubblehub/**/.openclaw/**/*.jsonl
+            .ci-artifacts/examples/**/.bubblehub/**/.openclaw/**/*.json
+            .ci-artifacts/integration-workspaces/**/.bubblehub/**/.openclaw/**/*.jsonl
+            .ci-artifacts/integration-workspaces/**/.bubblehub/**/.openclaw/**/*.json
 
       - name: Clean transient integration workspaces
         if: always()
         run: |
           docker run --rm \
-            -v "${{ github.workspace }}/.ageos-cache:/cache/ageos" \
+            -v "${{ github.workspace }}/.bubblehub-cache:/cache/bubblehub" \
             alpine:3.20 \
-            rm -rf /cache/ageos/integration-workspaces
-          mkdir -p .ageos-cache/integration-workspaces
-          chmod -R a+rwX .ageos-cache/integration-workspaces
+            rm -rf /cache/bubblehub/integration-workspaces
+          mkdir -p .bubblehub-cache/integration-workspaces
+          chmod -R a+rwX .bubblehub-cache/integration-workspaces

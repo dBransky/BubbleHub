@@ -1,5 +1,5 @@
-from ageos.engine.selector import select_tier
-from ageos.native import HardwareInfo
+from bubblehub.engine.selector import select_tier
+from bubblehub.native import HardwareInfo
 
 
 def test_selects_tiny_under_8gb_ram() -> None:

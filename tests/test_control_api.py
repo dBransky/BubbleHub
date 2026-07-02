@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import requests
 
-from ageos.app.api import ControlApiConfig, create_control_server
+from bubblehub.app.api import ControlApiConfig, create_control_server
 
 
 def test_control_api_serves_health_and_telemetry() -> None:
@@ -22,7 +22,7 @@ def test_control_api_serves_health_and_telemetry() -> None:
         server.server_close()
 
     assert health.status_code == 200
-    assert health.json()["service"] == "ageos-control-center"
+    assert health.json()["service"] == "bubblehub-control-center"
     assert telemetry.status_code == 200
     assert telemetry.json()["agents"][0]["agent_id"] == "agt-test"
     client.telemetry_snapshot.assert_called()
@@ -69,7 +69,7 @@ def test_control_api_model_actions() -> None:
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        with patch("ageos.app.api.select_model_for_speciality") as select_model:
+        with patch("bubblehub.app.api.select_model_for_speciality") as select_model:
             select_model.return_value = {"selected_model": "small"}
             selected = requests.post(
                 f"http://127.0.0.1:{port}/api/models/select",
@@ -94,8 +94,8 @@ def test_control_api_agent_stop_and_delete_actions() -> None:
     thread.start()
     try:
         with (
-            patch("ageos.app.api.stop_agent", return_value={"agent_id": "agt-test", "stopped": True}) as stop,
-            patch("ageos.app.api.delete_agent", return_value={"agent_id": "agt-test", "deleted": True}) as delete,
+            patch("bubblehub.app.api.stop_agent", return_value={"agent_id": "agt-test", "stopped": True}) as stop,
+            patch("bubblehub.app.api.delete_agent", return_value={"agent_id": "agt-test", "deleted": True}) as delete,
         ):
             stopped = requests.post(f"http://127.0.0.1:{port}/api/agents/agt-test/stop", json={}, timeout=5)
             deleted = requests.post(f"http://127.0.0.1:{port}/api/agents/agt-test/delete", json={}, timeout=5)

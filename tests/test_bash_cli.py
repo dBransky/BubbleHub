@@ -20,38 +20,38 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _require_ageos_cli() -> None:
-    if shutil.which("ageos") is None:
-        pytest.skip("ageos is not installed")
+def _require_bubblehub_cli() -> None:
+    if shutil.which("bubblehub") is None:
+        pytest.skip("bubblehub is not installed")
 
 
 def _cli_e2e_env(tmp_path: Path) -> dict[str, str]:
     env = os.environ.copy()
-    env.setdefault("AGEOS_API_BASE_URL", "http://127.0.0.1:8000")
-    env.setdefault("AGEOS_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
-    env["AGEOS_STATE_DIR"] = str(tmp_path / "ageos-state")
-    env["AGEOS_PYTHONPATH"] = str(ROOT)
+    env.setdefault("BUBBLEHUB_API_BASE_URL", "http://127.0.0.1:8000")
+    env.setdefault("BUBBLEHUB_SCHEDULER_STATE", str(tmp_path / "scheduler.state"))
+    env["BUBBLEHUB_STATE_DIR"] = str(tmp_path / "bubblehub-state")
+    env["BUBBLEHUB_PYTHONPATH"] = str(ROOT)
     env.setdefault("NO_PROXY", "127.0.0.1,localhost")
     env.setdefault("no_proxy", "127.0.0.1,localhost")
     return env
 
 
 def _cli_e2e_env_with_inference(tmp_path: Path) -> dict[str, str]:
-    from ageos.inference import ensure_inference_endpoint
+    from bubblehub.inference import ensure_inference_endpoint
 
     env = _cli_e2e_env(tmp_path)
-    env.pop("AGEOS_API_BASE_URL", None)
+    env.pop("BUBBLEHUB_API_BASE_URL", None)
     endpoint = ensure_inference_endpoint()
-    env["AGEOS_API_BASE_URL"] = endpoint
-    env.setdefault("AGEOS_LLAMA_CTX_SIZE", os.environ.get("AGEOS_LLAMA_CTX_SIZE", "512"))
-    env.setdefault("AGEOS_MAX_OUTPUT_TOKENS", os.environ.get("AGEOS_MAX_OUTPUT_TOKENS", "32"))
+    env["BUBBLEHUB_API_BASE_URL"] = endpoint
+    env.setdefault("BUBBLEHUB_LLAMA_CTX_SIZE", os.environ.get("BUBBLEHUB_LLAMA_CTX_SIZE", "512"))
+    env.setdefault("BUBBLEHUB_MAX_OUTPUT_TOKENS", os.environ.get("BUBBLEHUB_MAX_OUTPUT_TOKENS", "32"))
     return env
 
 
 def _pty_shell_root_dir(env: dict[str, str]) -> Path:
-    state_dir = Path(env.get("AGEOS_STATE_DIR", ROOT / ".ageos-state"))
+    state_dir = Path(env.get("BUBBLEHUB_STATE_DIR", ROOT / ".bubblehub-state"))
     default_root = state_dir.parent / "workspace"
-    integration_workspace_dir = env.get("AGEOS_INTEGRATION_WORKSPACE_DIR")
+    integration_workspace_dir = env.get("BUBBLEHUB_INTEGRATION_WORKSPACE_DIR")
     if not integration_workspace_dir:
         return default_root
     workspace_name = f"{state_dir.parent.parent.name}-{state_dir.parent.name}-workspace"
@@ -66,13 +66,13 @@ _PTY_FAILURE_MARKERS = (
     "sandbox inference request failed",
     "RuntimeError:",
     "failed to create filesystem sandbox",
-    "failed to mount AgeOS overfs",
+    "failed to mount BubbleHub overfs",
 )
 
 
 class _QuietHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
-        body = b"ageos-cli-policy-ok\n"
+        body = b"bubblehub-cli-policy-ok\n"
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")
         self.send_header("Content-Length", str(len(body)))
@@ -103,7 +103,7 @@ def _run_cli_e2e(
     stdin: str | None = None,
     timeout: int = 120,
 ) -> subprocess.CompletedProcess[str]:
-    _require_ageos_cli()
+    _require_bubblehub_cli()
     result = subprocess.run(
         command,
         cwd=ROOT,
@@ -126,7 +126,7 @@ def _run_cli(
     stdin: str | None = None,
     timeout: int = 120,
 ) -> subprocess.CompletedProcess[str]:
-    _require_ageos_cli()
+    _require_bubblehub_cli()
     return subprocess.run(
         command,
         cwd=ROOT,
@@ -143,13 +143,13 @@ def _run_cli(
 def _run_policy_probe(root_dir: Path, tmp_path: Path, target_url: str, expected_status: int) -> subprocess.CompletedProcess[str]:
     script = (
         "set -eu; "
-        "body=ageos-run-policy-body; "
+        "body=bubblehub-run-policy-body; "
         "status=$(curl --noproxy '' -sS -o \"$body\" "
         f"-w '%{{http_code}}' --max-time 15 {target_url}); "
         f'printf \'status=%s\\n\' "$status"; cat "$body"; test "$status" = {expected_status}'
     )
     return _run_cli(
-        ["ageos", "run", "--root-dir", str(root_dir), "--binary", "/bin/sh", "--", "-c", script],
+        ["bubblehub", "run", "--root-dir", str(root_dir), "--binary", "/bin/sh", "--", "-c", script],
         tmp_path=tmp_path,
         timeout=120,
     )
@@ -157,7 +157,7 @@ def _run_policy_probe(root_dir: Path, tmp_path: Path, target_url: str, expected_
 
 def _apply_manifest_policy(tmp_path: Path, agent_id: str, policy: str) -> None:
     script = f"""
-from ageos.native import NativeScheduler
+from bubblehub.native import NativeScheduler
 NativeScheduler().apply_access_policy(
     {agent_id!r},
     kind="http",
@@ -179,14 +179,14 @@ def _run_pty_shell_access_prompt(command: list[str], env: dict[str, str], target
         os.execvpe(command[0], command, env)
 
     try:
-        output = _read_pty_until(master_fd, pid, "[AgeOS]", timeout=120)
-        curl_command = "curl --noproxy '' -sS -o /tmp/ageos-cli-policy-body " f"-w 'status=%{{http_code}}\\n' --max-time 15 {target_url}\r"
+        output = _read_pty_until(master_fd, pid, "[BubbleHub]", timeout=120)
+        curl_command = "curl --noproxy '' -sS -o /tmp/bubblehub-cli-policy-body " f"-w 'status=%{{http_code}}\\n' --max-time 15 {target_url}\r"
         os.write(master_fd, curl_command.encode("utf-8"))
         output += _read_pty_until(master_fd, pid, "ask every time (approve now)", timeout=30)
         os.write(master_fd, b"\x1b[B\x1b[B\r")
         output += _read_pty_until(master_fd, pid, "status=200", timeout=30)
         repeated_curl_command = (
-            "curl --noproxy '' -sS -o /tmp/ageos-cli-policy-body-repeat " f"-w 'status2=%{{http_code}}\\n' --max-time 15 {target_url}\r"
+            "curl --noproxy '' -sS -o /tmp/bubblehub-cli-policy-body-repeat " f"-w 'status2=%{{http_code}}\\n' --max-time 15 {target_url}\r"
         )
         os.write(master_fd, repeated_curl_command.encode("utf-8"))
         output += _read_pty_until(master_fd, pid, "ask every time (approve now)", timeout=30)
@@ -207,10 +207,10 @@ def _run_pty_shell(
     *,
     response_timeout: int = 120,
 ) -> str:
-    _require_ageos_cli()
+    _require_bubblehub_cli()
     root_dir = _pty_shell_root_dir(env)
     root_dir.mkdir(parents=True, exist_ok=True)
-    shell_command = ["ageos", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"]
+    shell_command = ["bubblehub", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"]
 
     pid, master_fd = pty.fork()
     output = ""
@@ -219,7 +219,7 @@ def _run_pty_shell(
         os.execvpe(shell_command[0], shell_command, env)
 
     try:
-        output = _read_pty_until(master_fd, pid, "[AgeOS]", timeout=120)
+        output = _read_pty_until(master_fd, pid, "[BubbleHub]", timeout=120)
         for typed_command, contains_str in zip(commands, contains_strs):
             line = typed_command if typed_command.endswith("\r") else f"{typed_command}\r"
             step_start = len(output)
@@ -250,11 +250,11 @@ def _run_pty_shell_google_denial_prompt(command: list[str], env: dict[str, str])
         os.execvpe(command[0], command, env)
 
     try:
-        output = _read_pty_until(master_fd, pid, "[AgeOS]", timeout=120)
+        output = _read_pty_until(master_fd, pid, "[BubbleHub]", timeout=120)
         os.write(master_fd, b"curl google.com\r")
         output += _read_pty_until(master_fd, pid, "ask every time (approve now)", timeout=30)
         os.write(master_fd, b"\x1b[B\r")
-        output += _read_pty_until(master_fd, pid, "AgeOS proxy denied the request", timeout=30)
+        output += _read_pty_until(master_fd, pid, "BubbleHub proxy denied the request", timeout=30)
         os.write(master_fd, b"exit\r")
         _wait_pty_child(pid, timeout=30)
         return output
@@ -356,31 +356,31 @@ def _kill_pty_child(pid: int) -> None:
 @pytest.mark.parametrize(
     "command",
     [
-        ["ageos", "shell", "--root-dir", "examples/basic"],
-        ["ageos", "shell", "--root-dir", "examples/basic", "--allow-network"],
+        ["bubblehub", "shell", "--root-dir", "examples/basic"],
+        ["bubblehub", "shell", "--root-dir", "examples/basic", "--allow-network"],
     ],
 )
-def test_ageos_shell_examples_basic_cli_e2e(command: list[str], tmp_path: Path) -> None:
+def test_bubblehub_shell_examples_basic_cli_e2e(command: list[str], tmp_path: Path) -> None:
     result = _run_cli_e2e(command, tmp_path=tmp_path, stdin="exit\n")
 
-    assert "Entering AgeOS sandbox shell" in result.stdout
-    assert "Using AgeOS inference endpoint at http://127.0.0.1:8000" in result.stdout
+    assert "Entering BubbleHub sandbox shell" in result.stdout
+    assert "Using BubbleHub inference endpoint at http://127.0.0.1:8000" in result.stdout
 
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
-def test_ageos_shell_access_prompt_hands_terminal_to_host_cli(tmp_path: Path) -> None:
-    _require_ageos_cli()
+def test_bubblehub_shell_access_prompt_hands_terminal_to_host_cli(tmp_path: Path) -> None:
+    _require_bubblehub_cli()
     root_dir = tmp_path / "workspace"
     root_dir.mkdir()
 
     with _host_http_server() as target_url:
         output = _run_pty_shell_access_prompt(
-            ["ageos", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"],
+            ["bubblehub", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"],
             _cli_e2e_env(tmp_path),
             target_url,
         )
 
-    assert "AgeOS sandbox paused for host access decision" in output
+    assert "BubbleHub sandbox paused for host access decision" in output
     assert "always" in output
     assert "never" in output
     assert "ask every time (approve now)" in output
@@ -389,80 +389,80 @@ def test_ageos_shell_access_prompt_hands_terminal_to_host_cli(tmp_path: Path) ->
     assert "suspended (tty output)" not in output
     assert "status=200" in output
     assert "status2=200" in output
-    assert output.count("AgeOS sandbox paused for host access decision") == 2
+    assert output.count("BubbleHub sandbox paused for host access decision") == 2
 
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
-def test_ageos_shell_force_new_prompts_for_plain_google_curl_with_default_state(tmp_path: Path) -> None:
-    _require_ageos_cli()
+def test_bubblehub_shell_force_new_prompts_for_plain_google_curl_with_default_state(tmp_path: Path) -> None:
+    _require_bubblehub_cli()
     root_dir = tmp_path / "workspace"
     old_agent_id = "agt-stalegoogle"
-    (root_dir / ".ageos" / "agents" / old_agent_id / "home").mkdir(parents=True)
-    (root_dir / ".ageos" / "current-agent").write_text(f"{old_agent_id}\n", encoding="utf-8")
+    (root_dir / ".bubblehub" / "agents" / old_agent_id / "home").mkdir(parents=True)
+    (root_dir / ".bubblehub" / "current-agent").write_text(f"{old_agent_id}\n", encoding="utf-8")
     home = tmp_path / "home"
-    old_manifest_dir = home / ".local" / "state" / "ageos" / "sandboxes" / old_agent_id
+    old_manifest_dir = home / ".local" / "state" / "bubblehub" / "sandboxes" / old_agent_id
     old_manifest_dir.mkdir(parents=True)
     (old_manifest_dir / "access-manifest.json").write_text(
         '{"version":1,"agent_id":"agt-stalegoogle","policies":[{"kind":"http","subject":"google.com","method":"GET","path":"/","policy":"never"}],"pending":[]}\n',
         encoding="utf-8",
     )
     env = _cli_e2e_env(tmp_path)
-    env.pop("AGEOS_STATE_DIR", None)
+    env.pop("BUBBLEHUB_STATE_DIR", None)
     env.pop("XDG_STATE_HOME", None)
     env["HOME"] = str(home)
 
     output = _run_pty_shell_google_denial_prompt(
-        ["ageos", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"],
+        ["bubblehub", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"],
         env,
     )
 
-    new_agent_id = (root_dir / ".ageos" / "current-agent").read_text(encoding="utf-8").strip()
+    new_agent_id = (root_dir / ".bubblehub" / "current-agent").read_text(encoding="utf-8").strip()
     assert new_agent_id != old_agent_id
     assert not old_manifest_dir.exists()
-    assert "AgeOS sandbox paused for host access decision" in output
+    assert "BubbleHub sandbox paused for host access decision" in output
     assert "subject=google.com method=GET path=/" in output
     assert "always" in output
     assert "never" in output
     assert "ask every time (approve now)" in output
     assert "suspended (tty output)" not in output
-    assert "AgeOS proxy denied the request" in output
-    new_manifest = home / ".local" / "state" / "ageos" / "sandboxes" / new_agent_id / "access-manifest.json"
+    assert "BubbleHub proxy denied the request" in output
+    new_manifest = home / ".local" / "state" / "bubblehub" / "sandboxes" / new_agent_id / "access-manifest.json"
     assert '"subject":"google.com"' in new_manifest.read_text(encoding="utf-8")
     assert '"policy":"never"' in new_manifest.read_text(encoding="utf-8")
 
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed run test requires POSIX")
-def test_ageos_run_prompts_for_access_when_terminal_is_interactive(tmp_path: Path) -> None:
-    _require_ageos_cli()
+def test_bubblehub_run_prompts_for_access_when_terminal_is_interactive(tmp_path: Path) -> None:
+    _require_bubblehub_cli()
     root_dir = tmp_path / "run-pty-workspace"
     root_dir.mkdir()
     with _host_http_server() as target_url:
         script = (
             "set -eu; "
-            "status=$(curl --noproxy '' -sS -o ageos-run-pty-body "
+            "status=$(curl --noproxy '' -sS -o bubblehub-run-pty-body "
             f"-w '%{{http_code}}' --max-time 15 {target_url}); "
             'printf "status=%s\\n" "$status"; test "$status" = 200'
         )
         output = _run_pty_command_access_prompt(
-            ["ageos", "run", "--root-dir", str(root_dir), "--binary", "/bin/sh", "--", "-c", script],
+            ["bubblehub", "run", "--root-dir", str(root_dir), "--binary", "/bin/sh", "--", "-c", script],
             _cli_e2e_env(tmp_path),
             "status=200",
         )
 
-    assert "AgeOS sandbox paused for host access decision" in output
+    assert "BubbleHub sandbox paused for host access decision" in output
     assert "always" in output
     assert "never" in output
     assert "ask every time (approve now)" in output
-    assert "AgeOS proxy denied the request" not in output
+    assert "BubbleHub proxy denied the request" not in output
 
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
-def test_ageos_shell_name_appears_in_prompt(tmp_path: Path) -> None:
-    _require_ageos_cli()
+def test_bubblehub_shell_name_appears_in_prompt(tmp_path: Path) -> None:
+    _require_bubblehub_cli()
     root_dir = tmp_path / "named-shell-workspace"
     root_dir.mkdir()
     env = _cli_e2e_env(tmp_path)
-    command = ["ageos", "shell", "--name", "researcher", "--root-dir", str(root_dir), "--force-new-sandbox"]
+    command = ["bubblehub", "shell", "--name", "researcher", "--root-dir", str(root_dir), "--force-new-sandbox"]
     pid, master_fd = pty.fork()
     output = ""
     if pid == 0:
@@ -470,18 +470,18 @@ def test_ageos_shell_name_appears_in_prompt(tmp_path: Path) -> None:
         os.execvpe(command[0], command, env)
 
     try:
-        output = _read_pty_until(master_fd, pid, "[AgeOS researcher]", timeout=120)
+        output = _read_pty_until(master_fd, pid, "[BubbleHub researcher]", timeout=120)
         os.write(master_fd, b"exit\r")
         _wait_pty_child(pid, timeout=30)
     finally:
         os.close(master_fd)
         _kill_pty_child(pid)
 
-    assert "[AgeOS researcher]" in output
+    assert "[BubbleHub researcher]" in output
 
 
-def test_ageos_run_pending_access_can_be_resolved_from_dashboard_cli(tmp_path: Path) -> None:
-    _require_ageos_cli()
+def test_bubblehub_run_pending_access_can_be_resolved_from_dashboard_cli(tmp_path: Path) -> None:
+    _require_bubblehub_cli()
     root_dir = tmp_path / "run-dashboard-workspace"
     root_dir.mkdir()
 
@@ -489,9 +489,9 @@ def test_ageos_run_pending_access_can_be_resolved_from_dashboard_cli(tmp_path: P
         denied = _run_policy_probe(root_dir, tmp_path, target_url, 403)
         assert denied.returncode == 0, denied.stdout
         assert "status=403" in denied.stdout
-        assert "ageos dashboard" in denied.stdout
+        assert "bubblehub dashboard" in denied.stdout
 
-        dashboard = _run_cli(["ageos", "dashboard", "--once"], tmp_path=tmp_path, stdin="always\n", timeout=120)
+        dashboard = _run_cli(["bubblehub", "dashboard", "--once"], tmp_path=tmp_path, stdin="always\n", timeout=120)
         assert dashboard.returncode == 0, dashboard.stdout
         assert "Pending sandbox access requests" in dashboard.stdout
         assert "http GET 127.0.0.1/cli-policy" in dashboard.stdout
@@ -499,70 +499,70 @@ def test_ageos_run_pending_access_can_be_resolved_from_dashboard_cli(tmp_path: P
         target = f"127.0.0.1:{target_url.rsplit(':', 1)[1].split('/', 1)[0]}"
         connect_script = (
             "set -eu; "
-            'exec 3<>"/dev/tcp/127.0.0.1/$AGEOS_HTTP_PROXY_PORT"; '
+            'exec 3<>"/dev/tcp/127.0.0.1/$BUBBLEHUB_HTTP_PROXY_PORT"; '
             f"printf 'CONNECT {target} HTTP/1.1\\r\\nHost: {target}\\r\\n\\r\\n' >&3; "
             "IFS= read -r line <&3; "
             "printf 'connect_response=%s\\n' \"$line\"; "
             "case \"$line\" in *'200 Connection Established'*) exit 0 ;; *) exit 1 ;; esac"
         )
         connect = _run_cli(
-            ["ageos", "run", "--root-dir", str(root_dir), "--binary", "/usr/bin/bash", "--", "-lc", connect_script],
+            ["bubblehub", "run", "--root-dir", str(root_dir), "--binary", "/usr/bin/bash", "--", "-lc", connect_script],
             tmp_path=tmp_path,
             timeout=120,
         )
         assert connect.returncode == 0, connect.stdout
         assert "connect_response=HTTP/1.1 200 Connection Established" in connect.stdout
 
-        clear_dashboard = _run_cli(["ageos", "dashboard", "--once"], tmp_path=tmp_path, timeout=120)
+        clear_dashboard = _run_cli(["bubblehub", "dashboard", "--once"], tmp_path=tmp_path, timeout=120)
         assert clear_dashboard.returncode == 0, clear_dashboard.stdout
         assert "Pending sandbox access requests" not in clear_dashboard.stdout
 
 
-def test_ageos_manifest_cli_edits_policy_by_agent_id_and_root_dir(tmp_path: Path) -> None:
-    _require_ageos_cli()
+def test_bubblehub_manifest_cli_edits_policy_by_agent_id_and_root_dir(tmp_path: Path) -> None:
+    _require_bubblehub_cli()
     agent_id = "agt-manifest-cli"
     root_dir = tmp_path / "manifest-workspace"
-    marker = root_dir / ".ageos" / "current-agent"
+    marker = root_dir / ".bubblehub" / "current-agent"
     marker.parent.mkdir(parents=True)
     marker.write_text(f"{agent_id}\n", encoding="utf-8")
     _apply_manifest_policy(tmp_path, agent_id, "always")
 
-    listed = _run_cli(["ageos", "manifest", "--root-dir", str(root_dir), "--no-edit"], tmp_path=tmp_path)
+    listed = _run_cli(["bubblehub", "manifest", "--root-dir", str(root_dir), "--no-edit"], tmp_path=tmp_path)
     assert listed.returncode == 0, listed.stdout
     assert "Access manifest" in listed.stdout
     assert "api.example.com" in listed.stdout
     assert "always" in listed.stdout
 
-    edited = _run_cli(["ageos", "manifest", "--agent-id", agent_id], tmp_path=tmp_path, stdin="1\nnever\n")
+    edited = _run_cli(["bubblehub", "manifest", "--agent-id", agent_id], tmp_path=tmp_path, stdin="1\nnever\n")
     assert edited.returncode == 0, edited.stdout
     assert "Updated policy 1 to" in edited.stdout
     assert "never" in edited.stdout
 
-    verified = _run_cli(["ageos", "manifest", "--agent-id", agent_id, "--no-edit"], tmp_path=tmp_path)
+    verified = _run_cli(["bubblehub", "manifest", "--agent-id", agent_id, "--no-edit"], tmp_path=tmp_path)
     assert verified.returncode == 0, verified.stdout
     assert "api.example.com" in verified.stdout
     assert "never" in verified.stdout
     assert "always" not in verified.stdout
 
 
-def test_ageos_run_force_new_sandbox_discards_unremovable_overlay_workdir(tmp_path: Path) -> None:
-    _require_ageos_cli()
+def test_bubblehub_run_force_new_sandbox_discards_unremovable_overlay_workdir(tmp_path: Path) -> None:
+    _require_bubblehub_cli()
     root_dir = tmp_path / "force-new-workspace"
     agent_id = "agt-staleforce"
-    protected = root_dir / ".ageos" / "agents" / agent_id / "overlay" / "work" / "work"
-    home = root_dir / ".ageos" / "agents" / agent_id / "home"
+    protected = root_dir / ".bubblehub" / "agents" / agent_id / "overlay" / "work" / "work"
+    home = root_dir / ".bubblehub" / "agents" / agent_id / "home"
     protected.mkdir(parents=True)
     home.mkdir(parents=True)
     protected.chmod(0)
-    (root_dir / ".ageos" / "current-agent").write_text(f"{agent_id}\n", encoding="utf-8")
+    (root_dir / ".bubblehub" / "current-agent").write_text(f"{agent_id}\n", encoding="utf-8")
     _apply_manifest_policy(tmp_path, agent_id, "never")
-    old_manifest_dir = tmp_path / "ageos-state" / "sandboxes" / agent_id
+    old_manifest_dir = tmp_path / "bubblehub-state" / "sandboxes" / agent_id
     assert old_manifest_dir.exists()
 
     try:
         result = _run_cli(
             [
-                "ageos",
+                "bubblehub",
                 "run",
                 "--binary",
                 "/bin/true",
@@ -574,11 +574,11 @@ def test_ageos_run_force_new_sandbox_discards_unremovable_overlay_workdir(tmp_pa
             tmp_path=tmp_path,
         )
         assert result.returncode == 0, result.stdout
-        assert not (root_dir / ".ageos" / "agents" / agent_id).exists()
+        assert not (root_dir / ".bubblehub" / "agents" / agent_id).exists()
         assert not old_manifest_dir.exists()
-        assert (root_dir / ".ageos" / "current-agent").read_text(encoding="utf-8") != f"{agent_id}\n"
+        assert (root_dir / ".bubblehub" / "current-agent").read_text(encoding="utf-8") != f"{agent_id}\n"
     finally:
-        tombstone = root_dir / ".ageos" / "agents" / f".removed-{agent_id}"
+        tombstone = root_dir / ".bubblehub" / "agents" / f".removed-{agent_id}"
         for candidate in (protected, tombstone / "overlay" / "work" / "work"):
             if candidate.exists():
                 candidate.chmod(0o700)
@@ -588,24 +588,24 @@ def test_ageos_run_force_new_sandbox_discards_unremovable_overlay_workdir(tmp_pa
 @pytest.mark.parametrize(
     ("command", "expected"),
     [
-        (["ageos", "--version"], "ageos "),
-        (["ageos", "--help"], "AgeOS local agent runtime"),
-        (["ageos", "specialties", "list"], "default-instruct"),
-        (["ageos", "ps"], "Memory pressure:"),
-        (["ageos", "queue"], "AgeOS Waiting Queue"),
-        (["ageos", "poc", "--help"], "Start a local model REPL"),
-        (["ageos", "prompt", "--help"], "Run one local prompt"),
-        (["ageos", "run", "--help"], "Run a binary"),
-        (["ageos", "shell", "--help"], "Open an interactive shell"),
-        (["ageos", "dashboard", "--help"], "--once"),
-        (["ageos", "manifest", "--help"], "Inspect and edit"),
-        (["ageos", "serve", "--help"], "OpenAI-compatible"),
-        (["ageos", "models", "--help"], "Inspect and choose"),
-        (["ageos", "models", "list", "--help"], "List"),
-        (["ageos", "specialties", "--help"], "Inspect available"),
+        (["bubblehub", "--version"], "bubblehub "),
+        (["bubblehub", "--help"], "BubbleHub local agent runtime"),
+        (["bubblehub", "specialties", "list"], "default-instruct"),
+        (["bubblehub", "ps"], "Memory pressure:"),
+        (["bubblehub", "queue"], "BubbleHub Waiting Queue"),
+        (["bubblehub", "poc", "--help"], "Start a local model REPL"),
+        (["bubblehub", "prompt", "--help"], "Run one local prompt"),
+        (["bubblehub", "run", "--help"], "Run a binary"),
+        (["bubblehub", "shell", "--help"], "Open an interactive shell"),
+        (["bubblehub", "dashboard", "--help"], "--once"),
+        (["bubblehub", "manifest", "--help"], "Inspect and edit"),
+        (["bubblehub", "serve", "--help"], "OpenAI-compatible"),
+        (["bubblehub", "models", "--help"], "Inspect and choose"),
+        (["bubblehub", "models", "list", "--help"], "List"),
+        (["bubblehub", "specialties", "--help"], "Inspect available"),
     ],
 )
-def test_ageos_host_cli_tools_e2e(command: list[str], expected: str, tmp_path: Path) -> None:
+def test_bubblehub_host_cli_tools_e2e(command: list[str], expected: str, tmp_path: Path) -> None:
     result = _run_cli_e2e(command, tmp_path=tmp_path)
 
     assert expected in result.stdout
@@ -614,7 +614,7 @@ def test_ageos_host_cli_tools_e2e(command: list[str], expected: str, tmp_path: P
 @pytest.mark.integration
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_prompt_e2e(tmp_path: Path) -> None:
-    commands = [f"ageos prompt --text '{_SANDBOX_LLM_PROMPT}'"]
+    commands = [f"bubblehub prompt --text '{_SANDBOX_LLM_PROMPT}'"]
     expected = [_SANDBOX_LLM_EXPECTED]
     _run_pty_shell(
         commands,
@@ -626,27 +626,27 @@ def test_sandbox_prompt_e2e(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_poc_e2e(tmp_path: Path) -> None:
-    commands = ["ageos poc"]
-    expected = ["ageos>"]
+    commands = ["bubblehub poc"]
+    expected = ["bubblehub>"]
     _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_ps_blocked_inside_sandbox(tmp_path: Path) -> None:
-    commands = ["ageos ps"]
+    commands = ["bubblehub ps"]
     expected = ["only available to the real host user"]
     _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_app_blocked_inside_sandbox(tmp_path: Path) -> None:
-    commands = ["ageos app"]
+    commands = ["bubblehub app"]
     expected = ["only available to the real host user"]
     _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_dashboard_blocked_inside_sandbox(tmp_path: Path) -> None:
-    commands = ["ageos dashboard"]
+    commands = ["bubblehub dashboard"]
     expected = ["only available to the real host user"]
     _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)

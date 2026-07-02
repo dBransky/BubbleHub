@@ -80,7 +80,7 @@ static int env_with_prefix_exists(const char *prefix) {
 }
 
 static void strip_escape_env(void) {
-    unset_prefixed_env("AGEOS_");
+    unset_prefixed_env("BUBBLEHUB_");
     const char *names[] = {
         "OPENAI_BASE_URL",
         "OPENAI_API_KEY",
@@ -94,8 +94,8 @@ static void strip_escape_env(void) {
     for (size_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
         unsetenv(names[i]);
     }
-    if (env_with_prefix_exists("AGEOS_")) {
-        fprintf(stderr, "- AGEOS env vars remained available during C escape attempts\n");
+    if (env_with_prefix_exists("BUBBLEHUB_")) {
+        fprintf(stderr, "- BubbleHub env vars remained available during C escape attempts\n");
         failures++;
     }
 }
@@ -284,7 +284,7 @@ static int finit_module_probe(void) {
 
 static int delete_module_probe(void) {
 #ifdef SYS_delete_module
-    return syscall(SYS_delete_module, "ageos_escape_probe", 0) == 0 ? 0 : 1;
+    return syscall(SYS_delete_module, "bubblehub_escape_probe", 0) == 0 ? 0 : 1;
 #else
     return 1;
 #endif
@@ -382,9 +382,9 @@ static void run_fs_links(const char *workspace, const char *host_canary) {
 
 static void run_protected_writes(void) {
     record_if_success("syscall write /etc/passwd", write_file("/etc/passwd"));
-    record_if_success("syscall write /usr/local/bin/ageos", write_file("/usr/local/bin/ageos"));
-    record_if_success("syscall write /opt/ageos", create_file("/opt/ageos/.ageos-escape-c"));
-    record_if_success("syscall write host /tmp", create_file("/tmp/ageos-sandbox-escape-c"));
+    record_if_success("syscall write /usr/local/bin/bubblehub", write_file("/usr/local/bin/bubblehub"));
+    record_if_success("syscall write /opt/bubblehub", create_file("/opt/bubblehub/.bubblehub-escape-c"));
+    record_if_success("syscall write host /tmp", create_file("/tmp/bubblehub-sandbox-escape-c"));
     record_if_success("syscall write proc sysctl", write_file("/proc/sys/kernel/hostname"));
 }
 
@@ -394,10 +394,10 @@ static void run_protected_reads(void) {
 }
 
 static void run_protected_dirs(void) {
-    record_if_success("syscall write /root", create_file("/root/ageos-sandbox-escape"));
-    record_if_success("syscall write /var/tmp", create_file("/var/tmp/ageos-sandbox-escape"));
-    record_if_success("syscall write /run", create_file("/run/ageos-sandbox-escape"));
-    record_if_success("syscall write /dev", create_file("/dev/ageos-sandbox-escape"));
+    record_if_success("syscall write /root", create_file("/root/bubblehub-sandbox-escape"));
+    record_if_success("syscall write /var/tmp", create_file("/var/tmp/bubblehub-sandbox-escape"));
+    record_if_success("syscall write /run", create_file("/run/bubblehub-sandbox-escape"));
+    record_if_success("syscall write /dev", create_file("/dev/bubblehub-sandbox-escape"));
 }
 
 static void run_runtime_sockets(void) {
@@ -532,7 +532,7 @@ static int run_category(const char *category, const char *workspace, const char 
 }
 
 int main(int argc, char **argv) {
-    const char *workspace = required_env("AGEOS_WORKSPACE");
+    const char *workspace = required_env("BUBBLEHUB_WORKSPACE");
     const char *host_canary = required_env("HOST_CANARY");
     int expect_network_blocked = strcmp(required_env("EXPECT_NETWORK_BLOCKED"), "1") == 0;
     const char *category = argc > 1 ? argv[1] : "all";

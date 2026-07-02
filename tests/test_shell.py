@@ -4,8 +4,8 @@ from unittest.mock import Mock, patch
 import pytest
 import typer
 
-from ageos.cli.run import _choose_access_policy, _make_interactive_access_broker, _select_persistent_sandbox, run_agent
-from ageos.cli.shell import _interactive_args, command
+from bubblehub.cli.run import _choose_access_policy, _make_interactive_access_broker, _select_persistent_sandbox, run_agent
+from bubblehub.cli.shell import _interactive_args, command
 
 
 class _Input:
@@ -46,7 +46,7 @@ def test_shell_command_enables_interactive_access_broker() -> None:
     ctx = Mock()
     ctx.args = []
 
-    with patch("ageos.cli.shell.run_agent") as run:
+    with patch("bubblehub.cli.shell.run_agent") as run:
         command(ctx)
 
     assert run.call_args.kwargs["interactive_access"] is True
@@ -56,7 +56,7 @@ def test_shell_command_passes_agent_name() -> None:
     ctx = Mock()
     ctx.args = []
 
-    with patch("ageos.cli.shell.run_agent") as run:
+    with patch("bubblehub.cli.shell.run_agent") as run:
         command(ctx, name="reviewer")
 
     assert run.call_args.kwargs["name"] == "reviewer"
@@ -68,8 +68,8 @@ def test_shell_with_root_dir_allows_system_shell_binary(tmp_path: Path) -> None:
     client.native.run_sandbox.return_value = 0
 
     with (
-        patch("ageos.cli.run.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
+        patch("bubblehub.cli.run.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.run.apply_inference_env", return_value="http://127.0.0.1:8000"),
     ):
         with pytest.raises(typer.Exit) as exc:
             run_agent(
@@ -94,19 +94,19 @@ def test_shell_with_root_dir_allows_system_shell_binary(tmp_path: Path) -> None:
 def test_force_new_sandbox_removes_old_access_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = tmp_path / "workspace"
     agent_id = "agt-oldmanifest"
-    home = root / ".ageos" / "agents" / agent_id / "home"
+    home = root / ".bubblehub" / "agents" / agent_id / "home"
     home.mkdir(parents=True)
-    (root / ".ageos" / "current-agent").write_text(f"{agent_id}\n", encoding="utf-8")
+    (root / ".bubblehub" / "current-agent").write_text(f"{agent_id}\n", encoding="utf-8")
     state = tmp_path / "state"
     manifest_dir = state / "sandboxes" / agent_id
     manifest_dir.mkdir(parents=True)
     (manifest_dir / "access-manifest.json").write_text('{"policies":[]}\n', encoding="utf-8")
-    monkeypatch.setenv("AGEOS_STATE_DIR", str(state))
+    monkeypatch.setenv("BUBBLEHUB_STATE_DIR", str(state))
 
     selected = _select_persistent_sandbox(str(root), force_new=True)
 
     assert selected.agent_id is None
-    assert not (root / ".ageos" / "agents" / agent_id).exists()
+    assert not (root / ".bubblehub" / "agents" / agent_id).exists()
     assert not manifest_dir.exists()
 
 
@@ -133,7 +133,7 @@ def test_interactive_access_broker_applies_selected_policy() -> None:
     broker = _make_interactive_access_broker(native, "agt-test")
 
     with patch(
-        "ageos.cli.run._choose_access_policy",
+        "bubblehub.cli.run._choose_access_policy",
         return_value="always",
     ):
         response = broker({"kind": "http", "subject": "google.com", "method": "GET", "path": "/"})

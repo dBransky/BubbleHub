@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import requests
 
-from ageos.http_api import (
+from bubblehub.http_api import (
     ApiConfig,
     _resolve_specialty_alias,
     chat_completion_payload,
@@ -85,7 +85,7 @@ def test_embeddings_helpers_accept_openai_inputs() -> None:
 
 def test_openai_provider_prefix_resolves_known_specialty() -> None:
     assert _resolve_specialty_alias("openai/default-instruct", "default-instruct") == "default-instruct"
-    assert _resolve_specialty_alias("openai/not-ageos", "default-instruct") == "default-instruct"
+    assert _resolve_specialty_alias("openai/not-bubblehub", "default-instruct") == "default-instruct"
 
 
 def test_chat_completions_stream_returns_sse() -> None:
@@ -94,7 +94,7 @@ def test_chat_completions_stream_returns_sse() -> None:
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        with patch("ageos.http_api.EngineSession") as session_cls:
+        with patch("bubblehub.http_api.EngineSession") as session_cls:
             session = session_cls.return_value.__enter__.return_value
             session.chat.return_value = "hello"
             response = requests.post(
@@ -121,7 +121,7 @@ def test_chat_completions_call_native_session_per_request() -> None:
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        with patch("ageos.http_api.EngineSession") as session_cls:
+        with patch("bubblehub.http_api.EngineSession") as session_cls:
             session = session_cls.return_value.__enter__.return_value
             session.chat.side_effect = ["one", "two"]
             for _ in range(2):
@@ -147,7 +147,7 @@ def test_chat_completions_leave_cache_ownership_to_native_session() -> None:
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        with patch("ageos.http_api.EngineSession") as session_cls:
+        with patch("bubblehub.http_api.EngineSession") as session_cls:
             manager = session_cls.return_value
             session = manager.__enter__.return_value
             session.chat.side_effect = ["first", "second", "third"]
@@ -156,8 +156,8 @@ def test_chat_completions_leave_cache_ownership_to_native_session() -> None:
                 response = requests.post(
                     f"http://127.0.0.1:{port}/v1/chat/completions",
                     json={
-                        "model": "ageos-local",
-                        "ageos_specialty": "default-instruct",
+                        "model": "bubblehub-local",
+                        "bubblehub_specialty": "default-instruct",
                         "messages": [{"role": "user", "content": message}],
                     },
                     timeout=5,
@@ -179,7 +179,7 @@ def test_chat_completions_returns_gateway_error_for_native_session_failure() -> 
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        with patch("ageos.http_api.EngineSession") as session_cls:
+        with patch("bubblehub.http_api.EngineSession") as session_cls:
             session = session_cls.return_value.__enter__.return_value
             session.chat.side_effect = requests.ConnectionError("dead backend")
             response = requests.post(
@@ -204,7 +204,7 @@ def test_chat_completions_defaults_max_tokens() -> None:
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        with patch("ageos.http_api.EngineSession") as session_cls:
+        with patch("bubblehub.http_api.EngineSession") as session_cls:
             session = session_cls.return_value.__enter__.return_value
             session.chat.return_value = "hello"
             response = requests.post(
@@ -225,7 +225,7 @@ def test_chat_completions_preserves_client_max_tokens() -> None:
     thread = Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        with patch("ageos.http_api.EngineSession") as session_cls:
+        with patch("bubblehub.http_api.EngineSession") as session_cls:
             session = session_cls.return_value.__enter__.return_value
             session.chat.return_value = "hello"
             response = requests.post(

@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-workspace = Path(os.environ["AGEOS_WORKSPACE"])
+workspace = Path(os.environ["BUBBLEHUB_WORKSPACE"])
 home = Path(os.environ["HOME"])
 tmpdir = Path(os.environ["TMPDIR"])
 host_canary = Path(os.environ["HOST_CANARY"])
@@ -37,7 +37,7 @@ def fail_if_command_succeeds(name: str, command: list[str]) -> None:
 (tmpdir / "inside-python-tmp.txt").write_text("tmp-ok", encoding="utf-8")
 
 for key in list(os.environ):
-    if key.startswith("AGEOS_") or key in {
+    if key.startswith("BUBBLEHUB_") or key in {
         "OPENAI_BASE_URL",
         "OPENAI_API_KEY",
         "HTTP_PROXY",
@@ -49,8 +49,8 @@ for key in list(os.environ):
     }:
         os.environ.pop(key, None)
 
-if any(key.startswith("AGEOS_") for key in os.environ):
-    failures.append("AGEOS env vars remained available during Python escape attempts")
+if any(key.startswith("BUBBLEHUB_") for key in os.environ):
+    failures.append("BubbleHub env vars remained available during Python escape attempts")
 
 
 def run_fs_direct() -> None:
@@ -82,9 +82,9 @@ def run_fs_links() -> None:
 
 def run_protected_paths() -> None:
     fail_if_succeeds("write /etc/passwd", lambda: Path("/etc/passwd").open("a", encoding="utf-8").write("escaped"))
-    fail_if_succeeds("write /usr/local/bin/ageos", lambda: Path("/usr/local/bin/ageos").open("a", encoding="utf-8").write("escaped"))
-    fail_if_succeeds("write /opt/ageos", lambda: Path("/opt/ageos/.ageos-escape").write_text("escaped", encoding="utf-8"))
-    fail_if_succeeds("write host /tmp", lambda: Path("/tmp/ageos-sandbox-escape-python").write_text("escaped", encoding="utf-8"))
+    fail_if_succeeds("write /usr/local/bin/bubblehub", lambda: Path("/usr/local/bin/bubblehub").open("a", encoding="utf-8").write("escaped"))
+    fail_if_succeeds("write /opt/bubblehub", lambda: Path("/opt/bubblehub/.bubblehub-escape").write_text("escaped", encoding="utf-8"))
+    fail_if_succeeds("write host /tmp", lambda: Path("/tmp/bubblehub-sandbox-escape-python").write_text("escaped", encoding="utf-8"))
     fail_if_succeeds("write proc sysctl", lambda: Path("/proc/sys/kernel/hostname").open("w", encoding="utf-8").write("escaped\n"))
 
 
@@ -107,7 +107,7 @@ def run_proxy_bypass() -> None:
     if not expect_network_blocked:
         return
 
-    target = "http://example.com/ageos-proxy-bypass"
+    target = "http://example.com/bubblehub-proxy-bypass"
 
     def curl_must_not_fetch(url_args: list[str], name: str) -> None:
         if shutil.which("curl") is None:
@@ -158,7 +158,7 @@ def run_proxy_bypass() -> None:
 
 
 ROGUE_HOST = "203.0.113.1"
-WEB_TARGET = "http://example.com/ageos-endpoint-repoint"
+WEB_TARGET = "http://example.com/bubblehub-endpoint-repoint"
 COMMON_LEGIT_HOSTS = (
     "10.0.0.1",
     "192.168.0.1",
@@ -218,9 +218,9 @@ def run_endpoint_repoint() -> None:
 
     def inference_must_not_connect(host: str, name: str) -> None:
         os.environ["OPENAI_BASE_URL"] = f"http://{host}:8000/v1"
-        os.environ["AGEOS_SANDBOX_INFERENCE_HOST"] = host
-        os.environ["AGEOS_SANDBOX_INFERENCE_PORT"] = "8000"
-        os.environ["AGEOS_API_BASE_URL"] = f"http://{host}:8000"
+        os.environ["BUBBLEHUB_SANDBOX_INFERENCE_HOST"] = host
+        os.environ["BUBBLEHUB_SANDBOX_INFERENCE_PORT"] = "8000"
+        os.environ["BUBBLEHUB_API_BASE_URL"] = f"http://{host}:8000"
 
         def urllib_inference_fetch() -> None:
             import urllib.request

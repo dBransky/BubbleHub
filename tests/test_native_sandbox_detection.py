@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from ageos.native import _has_sandbox_agent_uid, _has_sandbox_user_namespace, is_sandboxed
+from bubblehub.native import _has_sandbox_agent_uid, _has_sandbox_user_namespace, is_sandboxed
 
 
 def test_has_sandbox_user_namespace_detects_single_uid_mapping() -> None:
@@ -11,14 +11,14 @@ def test_has_sandbox_user_namespace_detects_single_uid_mapping() -> None:
 
 
 def test_is_sandboxed_uses_namespace_even_without_env(monkeypatch) -> None:
-    monkeypatch.delenv("AGEOS_SANDBOX", raising=False)
+    monkeypatch.delenv("BUBBLEHUB_SANDBOX", raising=False)
 
-    with patch("ageos.native._has_sandbox_user_namespace", return_value=True):
+    with patch("bubblehub.native._has_sandbox_user_namespace", return_value=True):
         assert is_sandboxed() is True
 
 
 def test_is_sandboxed_uses_agent_uid_even_without_env(monkeypatch) -> None:
-    monkeypatch.delenv("AGEOS_SANDBOX", raising=False)
+    monkeypatch.delenv("BUBBLEHUB_SANDBOX", raising=False)
 
     with patch("os.geteuid", return_value=60042):
         assert _has_sandbox_agent_uid() is True

@@ -3,12 +3,12 @@ from __future__ import annotations
 import os
 from unittest.mock import Mock
 
-from ageos.app.agents import write_agent_metadata
-from ageos.app.telemetry import control_snapshot, pending_access
+from bubblehub.app.agents import write_agent_metadata
+from bubblehub.app.telemetry import control_snapshot, pending_access
 
 
 def test_control_snapshot_enriches_scheduler_state(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("AGEOS_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("BUBBLEHUB_STATE_DIR", str(tmp_path / "state"))
     write_agent_metadata("agt-test", name="named agent", root_dir=None, workdir=None, binary="/bin/agent")
     client = Mock()
     client.telemetry_snapshot.return_value = {
@@ -32,15 +32,15 @@ def test_control_snapshot_enriches_scheduler_state(tmp_path, monkeypatch) -> Non
     assert snapshot["agents"][0]["agent_id"] == "agt-test"
     assert snapshot["agents"][0]["display_name"] == "named agent"
     assert snapshot["agents"][0]["rss_bytes"] > 0
-    assert snapshot["agents"][0]["pid_role"] == "ageos-run-host-process"
+    assert snapshot["agents"][0]["pid_role"] == "bubblehub-run-host-process"
     assert snapshot["models"][0]["ram_reserved_bytes"] == 4 * 1024**3
     assert snapshot["queue"] == [{"job_id": "job-1"}]
 
 
 def test_control_snapshot_includes_stopped_persistent_agents(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("AGEOS_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("BUBBLEHUB_STATE_DIR", str(tmp_path / "state"))
     root = tmp_path / "workspace"
-    (root / ".ageos" / "agents" / "agt-stopped" / "home").mkdir(parents=True)
+    (root / ".bubblehub" / "agents" / "agt-stopped" / "home").mkdir(parents=True)
     (tmp_path / "state" / "sandboxes" / "agt-stopped").mkdir(parents=True)
     write_agent_metadata(
         "agt-stopped",
@@ -73,7 +73,7 @@ def test_control_snapshot_includes_stopped_persistent_agents(tmp_path, monkeypat
 
 
 def test_control_snapshot_keeps_running_agent_over_stopped_metadata(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("AGEOS_STATE_DIR", str(tmp_path / "state"))
+    monkeypatch.setenv("BUBBLEHUB_STATE_DIR", str(tmp_path / "state"))
     write_agent_metadata("agt-test", name="running reviewer", root_dir=None, workdir=None, binary="/bin/agent")
     (tmp_path / "state" / "sandboxes" / "agt-test").mkdir(parents=True)
     client = Mock()

@@ -2,18 +2,18 @@
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Linux" ]]; then
-  echo "AgeOS runtime dependencies are Linux-focused. Install Python deps with pip on this platform."
+  echo "BubbleHub runtime dependencies are Linux-focused. Install Python deps with pip on this platform."
   exit 0
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPT_DIR/install-ui.sh"
-AGEOS_INSTALL_APP="$(ageos_resolve_desktop_app_choice)"
-export AGEOS_INSTALL_APP
-if [[ "$AGEOS_INSTALL_APP" == "1" ]]; then
-  export AGEOS_SKIP_TAURI=0
+BUBBLEHUB_INSTALL_APP="$(bubblehub_resolve_desktop_app_choice)"
+export BUBBLEHUB_INSTALL_APP
+if [[ "$BUBBLEHUB_INSTALL_APP" == "1" ]]; then
+  export BUBBLEHUB_SKIP_TAURI=0
 else
-  export AGEOS_SKIP_TAURI=1
+  export BUBBLEHUB_SKIP_TAURI=1
 fi
 
 sudo apt-get update
@@ -33,25 +33,25 @@ sudo apt-get install -y \
   python3-pip \
   python3-venv
 
-if [[ "${AGEOS_INSTALL_APP:-1}" != "0" && "${AGEOS_SKIP_TAURI:-0}" != "1" ]]; then
+if [[ "${BUBBLEHUB_INSTALL_APP:-1}" != "0" && "${BUBBLEHUB_SKIP_TAURI:-0}" != "1" ]]; then
   bash "$SCRIPT_DIR/install-app-deps.sh"
 fi
 
 LLAMA_CPP_REPO="${LLAMA_CPP_REPO:-https://github.com/ggml-org/llama.cpp.git}"
 LLAMA_CPP_REF="${LLAMA_CPP_REF:-master}"
-LLAMA_CPP_SRC="${LLAMA_CPP_SRC:-/tmp/ageos-llama.cpp}"
+LLAMA_CPP_SRC="${LLAMA_CPP_SRC:-/tmp/bubblehub-llama.cpp}"
 LLAMA_CPP_BUILD="$LLAMA_CPP_SRC/build"
 LLAMA_LIB_DIR="/usr/local/lib/x86_64-linux-gnu"
-AGEOS_GPU_MODE="${AGEOS_GPU:-auto}"
+BUBBLEHUB_GPU_MODE="${BUBBLEHUB_GPU:-auto}"
 
 detect_llama_gpu_backend() {
-  case "$AGEOS_GPU_MODE" in
+  case "$BUBBLEHUB_GPU_MODE" in
     cpu)
       echo "cpu"
       return
       ;;
     cuda-llama|rocm-llama|vulkan-llama|sycl-llama)
-      echo "$AGEOS_GPU_MODE"
+      echo "$BUBBLEHUB_GPU_MODE"
       return
       ;;
     vllm)
@@ -61,7 +61,7 @@ detect_llama_gpu_backend() {
     auto)
       ;;
     *)
-      echo "Unsupported AGEOS_GPU mode: $AGEOS_GPU_MODE" >&2
+      echo "Unsupported BUBBLEHUB_GPU mode: $BUBBLEHUB_GPU_MODE" >&2
       exit 1
       ;;
   esac
@@ -126,13 +126,13 @@ build_llama_server() {
 LLAMA_BACKEND="$(detect_llama_gpu_backend)"
 CURRENT_LLAMA_BACKEND="missing"
 if command -v llama-server >/dev/null 2>&1; then
-  CURRENT_LLAMA_BACKEND="$(cat /usr/local/share/ageos/llama-backend 2>/dev/null || echo unknown)"
+  CURRENT_LLAMA_BACKEND="$(cat /usr/local/share/bubblehub/llama-backend 2>/dev/null || echo unknown)"
 fi
 
 if ! command -v llama-server >/dev/null 2>&1 || [[ "$LLAMA_BACKEND" != "cpu" && "$CURRENT_LLAMA_BACKEND" != "$LLAMA_BACKEND" ]]; then
   echo "Installing llama.cpp server from ${LLAMA_CPP_REPO} (${LLAMA_CPP_REF})..."
   if ! build_llama_server "$LLAMA_BACKEND"; then
-    if [[ "$AGEOS_GPU_MODE" == "auto" && "$LLAMA_BACKEND" != "cpu" ]]; then
+    if [[ "$BUBBLEHUB_GPU_MODE" == "auto" && "$LLAMA_BACKEND" != "cpu" ]]; then
       echo "GPU llama.cpp build failed for ${LLAMA_BACKEND}; retrying CPU build..." >&2
       build_llama_server "cpu"
       LLAMA_BACKEND="cpu"
@@ -142,8 +142,8 @@ if ! command -v llama-server >/dev/null 2>&1 || [[ "$LLAMA_BACKEND" != "cpu" && 
     fi
   fi
   sudo install -m 0755 "$LLAMA_CPP_BUILD/bin/llama-server" /usr/local/bin/llama-server
-  sudo mkdir -p /usr/local/share/ageos
-  echo "$LLAMA_BACKEND" | sudo tee /usr/local/share/ageos/llama-backend >/dev/null
+  sudo mkdir -p /usr/local/share/bubblehub
+  echo "$LLAMA_BACKEND" | sudo tee /usr/local/share/bubblehub/llama-backend >/dev/null
 else
   echo "llama-server already available at $(command -v llama-server) (${CURRENT_LLAMA_BACKEND})"
 fi
@@ -153,4 +153,4 @@ if [[ -d "$LLAMA_CPP_BUILD" ]]; then
   sudo ldconfig
 fi
 
-echo "AgeOS GPU mode: ${AGEOS_GPU_MODE}. Optional vLLM dependencies are installed by scripts/build.sh when supported."
+echo "BubbleHub GPU mode: ${BUBBLEHUB_GPU_MODE}. Optional vLLM dependencies are installed by scripts/build.sh when supported."

@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default permissions for AgeOS Control Center","local":true,"windows":["main"],"permissions":["core:default"]}}
+{"default":{"identifier":"default","description":"Default permissions for BubbleHub Control Center","local":true,"windows":["main"],"permissions":["core:default"]}}

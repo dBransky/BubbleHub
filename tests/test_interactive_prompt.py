@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import io
 
-from ageos.cli.interactive import choose_option
+from bubblehub.cli.interactive import choose_option
 
 
 def test_choose_option_renders_green_selection() -> None:
     output = io.StringIO()
 
     selected = choose_option(
-        title="AgeOS base model",
+        title="BubbleHub base model",
         message="Pick one.",
         options=("medium (recommended)", "small"),
         default_index=0,

@@ -16,24 +16,24 @@ pytest_status=0
 c_coverage_status=0
 c_html_status=0
 
-meson test -C libageos/build --print-errorlogs || meson_status=$?
+meson test -C libbubblehub/build --print-errorlogs || meson_status=$?
 
 COVERAGE_FILE="${PY_OUT}/.coverage" pytest -m "not integration" \
-    --cov=ageos \
+    --cov=bubblehub \
     --cov-report=term-missing \
     --cov-report="xml:${PY_OUT}/coverage.xml" \
     --cov-report="html:${PY_OUT}/html" \
     "$@" || pytest_status=$?
 
-ninja -C libageos/build coverage-xml || c_coverage_status=$?
-ninja -C libageos/build coverage-html || c_html_status=$?
+ninja -C libbubblehub/build coverage-xml || c_coverage_status=$?
+ninja -C libbubblehub/build coverage-html || c_html_status=$?
 
-if [[ -f libageos/build/meson-logs/coverage.xml ]]; then
-    cp libageos/build/meson-logs/coverage.xml "$C_OUT/coverage.xml"
+if [[ -f libbubblehub/build/meson-logs/coverage.xml ]]; then
+    cp libbubblehub/build/meson-logs/coverage.xml "$C_OUT/coverage.xml"
 fi
-if [[ -d libageos/build/meson-logs/coveragereport ]]; then
+if [[ -d libbubblehub/build/meson-logs/coveragereport ]]; then
     rm -rf "$C_OUT/html"
-    cp -a libageos/build/meson-logs/coveragereport "$C_OUT/html"
+    cp -a libbubblehub/build/meson-logs/coveragereport "$C_OUT/html"
 fi
 
 chmod -R a+rX "$COVERAGE_OUT"

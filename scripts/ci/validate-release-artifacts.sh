@@ -3,7 +3,7 @@ set -euo pipefail
 
 ASSETS_DIR="${1:?usage: scripts/ci/validate-release-artifacts.sh <release-assets-dir>}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-AGEOS_RUNTIME_IMAGE="${AGEOS_RUNTIME_IMAGE:?AGEOS_RUNTIME_IMAGE is required}"
+BUBBLEHUB_RUNTIME_IMAGE="${BUBBLEHUB_RUNTIME_IMAGE:?BUBBLEHUB_RUNTIME_IMAGE is required}"
 
 require_file() {
   local path="$1"
@@ -15,14 +15,14 @@ require_file() {
 
 echo "Validating release artifacts in ${ASSETS_DIR}..."
 
-TARBALL="$ASSETS_DIR/ageos-source.tar.gz"
+TARBALL="$ASSETS_DIR/bubblehub-source.tar.gz"
 INSTALL_SH="$ASSETS_DIR/install.sh"
 INSTALL_PS1="$ASSETS_DIR/install.ps1"
 CHECKSUMS="$ASSETS_DIR/SHA256SUMS"
 CONTAINER_IMAGE="$ASSETS_DIR/container-image.txt"
 shopt -s nullglob
-DEBS=("$ASSETS_DIR"/AgeOS-*-x64.deb)
-EXES=("$ASSETS_DIR"/AgeOS-*-x64.exe)
+DEBS=("$ASSETS_DIR"/BubbleHub-*-x64.deb)
+EXES=("$ASSETS_DIR"/BubbleHub-*-x64.exe)
 shopt -u nullglob
 
 require_file "$TARBALL"
@@ -31,7 +31,7 @@ require_file "$INSTALL_PS1"
 require_file "$CHECKSUMS"
 require_file "$CONTAINER_IMAGE"
 if [[ ${#DEBS[@]} -eq 0 || ${#EXES[@]} -eq 0 ]]; then
-  echo "Expected AgeOS-*-x64.deb and AgeOS-*-x64.exe in ${ASSETS_DIR}" >&2
+  echo "Expected BubbleHub-*-x64.deb and BubbleHub-*-x64.exe in ${ASSETS_DIR}" >&2
   exit 1
 fi
 
@@ -96,83 +96,83 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Pulling runtime image ${AGEOS_RUNTIME_IMAGE}..."
-docker pull "$AGEOS_RUNTIME_IMAGE"
+echo "Pulling runtime image ${BUBBLEHUB_RUNTIME_IMAGE}..."
+docker pull "$BUBBLEHUB_RUNTIME_IMAGE"
 
 echo "Validating mocked GPU setup branches..."
-docker run --rm "$AGEOS_RUNTIME_IMAGE" bash -lc '
+docker run --rm "$BUBBLEHUB_RUNTIME_IMAGE" bash -lc '
   set -euo pipefail
   profile="$(mktemp)"
-  AGEOS_GPU_VENDOR=nvidia \
-  AGEOS_GPU_BACKENDS=cuda-llama \
-  AGEOS_GPU_BACKEND=cuda-llama \
-  AGEOS_GPU_VRAM_BYTES=11811160064 \
-  AGEOS_GPU_FREE_VRAM_BYTES=9663676416 \
-    /opt/ageos/bin/python -m ageos.gpu_setup --mode auto --no-install --profile-out "$profile"
+  BUBBLEHUB_GPU_VENDOR=nvidia \
+  BUBBLEHUB_GPU_BACKENDS=cuda-llama \
+  BUBBLEHUB_GPU_BACKEND=cuda-llama \
+  BUBBLEHUB_GPU_VRAM_BYTES=11811160064 \
+  BUBBLEHUB_GPU_FREE_VRAM_BYTES=9663676416 \
+    /opt/bubblehub/bin/python -m bubblehub.gpu_setup --mode auto --no-install --profile-out "$profile"
   grep -q "\"backend\": \"cuda-llama\"" "$profile"
 
-  AGEOS_GPU_VENDOR=nvidia \
-  AGEOS_GPU_BACKENDS=vllm,cuda-llama \
-  AGEOS_GPU_BACKEND=vllm \
-  AGEOS_GPU_COMPUTE_CAPABILITY=8.9 \
-  AGEOS_GPU_VRAM_BYTES=25769803776 \
-  AGEOS_GPU_FREE_VRAM_BYTES=23622320128 \
-    /opt/ageos/bin/python -m ageos.gpu_setup --mode auto --no-install --profile-out "$profile"
+  BUBBLEHUB_GPU_VENDOR=nvidia \
+  BUBBLEHUB_GPU_BACKENDS=vllm,cuda-llama \
+  BUBBLEHUB_GPU_BACKEND=vllm \
+  BUBBLEHUB_GPU_COMPUTE_CAPABILITY=8.9 \
+  BUBBLEHUB_GPU_VRAM_BYTES=25769803776 \
+  BUBBLEHUB_GPU_FREE_VRAM_BYTES=23622320128 \
+    /opt/bubblehub/bin/python -m bubblehub.gpu_setup --mode auto --no-install --profile-out "$profile"
   grep -q "\"backend\": \"vllm\"" "$profile"
 
-  AGEOS_GPU_VENDOR=none \
-  AGEOS_GPU_BACKENDS= \
-  AGEOS_GPU_BACKEND=cpu \
-    /opt/ageos/bin/python -m ageos.gpu_setup --mode auto --no-install --profile-out "$profile"
+  BUBBLEHUB_GPU_VENDOR=none \
+  BUBBLEHUB_GPU_BACKENDS= \
+  BUBBLEHUB_GPU_BACKEND=cpu \
+    /opt/bubblehub/bin/python -m bubblehub.gpu_setup --mode auto --no-install --profile-out "$profile"
   grep -q "\"backend\": \"cpu\"" "$profile"
 '
 
 echo "Checking vLLM optional dependency resolution..."
-docker run --rm "$AGEOS_RUNTIME_IMAGE" bash -lc '
+docker run --rm "$BUBBLEHUB_RUNTIME_IMAGE" bash -lc '
   set -euo pipefail
-  /opt/ageos/bin/python -m pip install --dry-run "vllm>=0.5" >/tmp/ageos-vllm-dry-run.log
+  /opt/bubblehub/bin/python -m pip install --dry-run "vllm>=0.5" >/tmp/bubblehub-vllm-dry-run.log
 '
 
-echo "Validating source tarball install path (AGEOS_SKIP_DEPS=1 ./scripts/build.sh)..."
+echo "Validating source tarball install path (BUBBLEHUB_SKIP_DEPS=1 ./scripts/build.sh)..."
 docker run --rm --privileged --security-opt seccomp=unconfined \
-  -v "$TARBALL:/tmp/ageos-source.tar.gz:ro" \
-  "$AGEOS_RUNTIME_IMAGE" \
+  -v "$TARBALL:/tmp/bubblehub-source.tar.gz:ro" \
+  "$BUBBLEHUB_RUNTIME_IMAGE" \
   bash -lc '
     set -euo pipefail
-    rm -rf /opt/ageos
-    rm -f /usr/local/bin/ageos /usr/local/bin/ageos-node
+    rm -rf /opt/bubblehub
+    rm -f /usr/local/bin/bubblehub /usr/local/bin/bubblehub-node
     src="$(mktemp -d)"
-    tar -xzf /tmp/ageos-source.tar.gz -C "$src"
+    tar -xzf /tmp/bubblehub-source.tar.gz -C "$src"
     top_level="$(find "$src" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
     cd "$top_level"
-    AGEOS_SKIP_DEPS=1 ./scripts/build.sh
-    ageos --help >/dev/null
-    command -v ageos-node >/dev/null
-    test -x /usr/local/bin/ageos-node
+    BUBBLEHUB_SKIP_DEPS=1 ./scripts/build.sh
+    bubblehub --help >/dev/null
+    command -v bubblehub-node >/dev/null
+    test -x /usr/local/bin/bubblehub-node
   '
 
 echo "Validating .deb install on clean Ubuntu..."
 docker run --rm --privileged --security-opt seccomp=unconfined \
-  -v "$DEB:/tmp/ageos.deb:ro" \
+  -v "$DEB:/tmp/bubblehub.deb:ro" \
   ubuntu:22.04 \
   bash -lc '
     set -euo pipefail
     export DEBIAN_FRONTEND=noninteractive
     apt-get update
     apt-get install -y ca-certificates python3 sudo
-    apt-get install -y /tmp/ageos.deb
-    command -v ageos >/dev/null
-    command -v ageos-node >/dev/null
-    command -v ageos-sandbox >/dev/null
-    command -v ageos-control-center >/dev/null
+    apt-get install -y /tmp/bubblehub.deb
+    command -v bubblehub >/dev/null
+    command -v bubblehub-node >/dev/null
+    command -v bubblehub-sandbox >/dev/null
+    command -v bubblehub-control-center >/dev/null
     command -v llama-server >/dev/null
-    test -d /opt/ageos
-    ageos --help >/dev/null
-    ageos app --help >/dev/null
-    test -x /usr/bin/ageos-node
-    test -x /usr/bin/ageos-control-center
-    test -f /usr/share/applications/ageos-control-center.desktop
-    test -f /usr/share/icons/hicolor/512x512/apps/ageos-control-center.png
+    test -d /opt/bubblehub
+    bubblehub --help >/dev/null
+    bubblehub app --help >/dev/null
+    test -x /usr/bin/bubblehub-node
+    test -x /usr/bin/bubblehub-control-center
+    test -f /usr/share/applications/bubblehub-control-center.desktop
+    test -f /usr/share/icons/hicolor/scalable/apps/bubblehub-control-center.svg
   '
 
 echo "Validating Windows bootstrapper .exe..."
@@ -185,8 +185,8 @@ if ! file "$EXE" | grep -Eiq 'PE32|PE32\+'; then
   file "$EXE" >&2 || true
   exit 1
 fi
-if ! strings "$EXE" | grep -q 'AgeOS'; then
-  echo "Windows bootstrapper does not contain expected AgeOS branding." >&2
+if ! strings "$EXE" | grep -q 'BubbleHub'; then
+  echo "Windows bootstrapper does not contain expected BubbleHub branding." >&2
   exit 1
 fi
 if ! strings "$EXE" | grep -q 'Control Center'; then

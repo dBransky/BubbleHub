@@ -89,8 +89,8 @@ jobs:
             --arg timestamp "$timestamp" \
             --argjson color "$color" \
             '{
-              "username": "AgeOS GitHub",
-              "avatar_url": "https://ageos-labs.com/logo.png",
+              "username": "BubbleHub GitHub",
+              "avatar_url": "https://BubbleHub.ai/logo.png",
               "embeds": [
                 {
                   "title": ("Issue #" + $number + " " + $action),
@@ -119,7 +119,7 @@ jobs:
                     }
                   ],
                   "footer": {
-                    "text": "AgeOS • GitHub Issues"
+                    "text": "BubbleHub • GitHub Issues"
                   },
                   "timestamp": $timestamp
                 }
@@ -186,8 +186,8 @@ jobs:
             --arg body "$body_preview" \
             --arg timestamp "$timestamp" \
             '{
-              "username": "AgeOS GitHub",
-              "avatar_url": "https://ageos-labs.com/logo.png",
+              "username": "BubbleHub GitHub",
+              "avatar_url": "https://BubbleHub.ai/logo.png",
               "embeds": [
                 {
                   "title": ("✅ Merged to main: PR #" + $number),
@@ -216,7 +216,7 @@ jobs:
                     }
                   ],
                   "footer": {
-                    "text": "AgeOS • Merged to main"
+                    "text": "BubbleHub • Merged to main"
                   },
                   "timestamp": $timestamp
                 }

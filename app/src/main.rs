@@ -5,7 +5,7 @@ fn main() {
         .setup(|app| {
             let url = app_url()?;
             WebviewWindowBuilder::new(app, "main", WebviewUrl::External(url))
-                .title("AgeOS Control Center")
+                .title("BubbleHub Control Center")
                 .inner_size(1280.0, 860.0)
                 .min_inner_size(960.0, 640.0)
                 .resizable(true)
@@ -13,11 +13,11 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("failed to run AgeOS Control Center");
+        .expect("failed to run BubbleHub Control Center");
 }
 
 fn app_url() -> Result<url::Url, Box<dyn std::error::Error>> {
-    app_url_from(std::env::args().nth(1), std::env::var("AGEOS_APP_URL").ok())
+    app_url_from(std::env::args().nth(1), std::env::var("BUBBLEHUB_APP_URL").ok())
 }
 
 fn app_url_from(

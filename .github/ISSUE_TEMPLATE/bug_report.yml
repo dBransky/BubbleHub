@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug or unexpected behaviour in AgeOS Runtime.
+description: Report a bug or unexpected behaviour in BubbleHub Runtime.
 title: "bug: "
 labels: ["bug"]
 body:
@@ -53,7 +53,7 @@ body:
         Please provide relevant details about your environment.
       placeholder: |
         - OS: (e.g. Ubuntu 24.04, macOS 14, Windows 11)
-        - AgeOS Runtime version: (e.g. v0.1.0 or commit SHA)
+        - BubbleHub Runtime version: (e.g. v0.1.0 or commit SHA)
         - Python version: (e.g. 3.12)
         - Docker version (if applicable):
         - GPU / hardware (if relevant):

@@ -6,12 +6,12 @@ import pytest
 import typer
 from rich.console import Console
 
-from ageos.cli.manifest import _choose_policy_index, _resolve_agent_id, command
+from bubblehub.cli.manifest import _choose_policy_index, _resolve_agent_id, command
 
 
 def test_manifest_resolves_agent_id_from_root_dir(tmp_path) -> None:
     root = tmp_path / "workspace"
-    marker = root / ".ageos" / "current-agent"
+    marker = root / ".bubblehub" / "current-agent"
     marker.parent.mkdir(parents=True)
     marker.write_text("agt-root-manifest\n", encoding="utf-8")
 
@@ -44,8 +44,8 @@ def test_manifest_command_edits_selected_policy() -> None:
     client = Mock(native=native)
 
     with (
-        patch("ageos.cli.manifest.SchedulerClient.local", return_value=client),
-        patch("ageos.cli.manifest.Prompt.ask", side_effect=["1", "never"]),
+        patch("bubblehub.cli.manifest.SchedulerClient.local", return_value=client),
+        patch("bubblehub.cli.manifest.Prompt.ask", side_effect=["1", "never"]),
     ):
         command(agent_id="agt-test", root_dir=None)
 
@@ -60,5 +60,5 @@ def test_manifest_command_edits_selected_policy() -> None:
 
 
 def test_choose_policy_index_can_quit() -> None:
-    with patch("ageos.cli.manifest.Prompt.ask", return_value="q"):
+    with patch("bubblehub.cli.manifest.Prompt.ask", return_value="q"):
         assert _choose_policy_index(2, Console(record=True)) is None

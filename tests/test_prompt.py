@@ -1,16 +1,16 @@
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ageos.cli import prompt
+from bubblehub.cli import prompt
 
 
 def test_prompt_uses_engine_session_even_when_api_base_is_set(
     monkeypatch,
     capsys,
 ) -> None:
-    monkeypatch.setenv("AGEOS_API_BASE_URL", "http://127.0.0.1:8000")
+    monkeypatch.setenv("BUBBLEHUB_API_BASE_URL", "http://127.0.0.1:8000")
 
-    with patch("ageos.cli.prompt.EngineSession") as session_cls:
+    with patch("bubblehub.cli.prompt.EngineSession") as session_cls:
         session = session_cls.return_value.__enter__.return_value
         session.chat.return_value = "direct"
 
@@ -29,8 +29,8 @@ def test_prompt_uses_engine_session_even_when_api_base_is_set(
 
 def test_prompt_defaults_to_configured_speciality(capsys) -> None:
     with (
-        patch("ageos.cli.prompt.load_inference_config", return_value=SimpleNamespace(default_specialty="default-instruct")),
-        patch("ageos.cli.prompt.EngineSession") as session_cls,
+        patch("bubblehub.cli.prompt.load_inference_config", return_value=SimpleNamespace(default_specialty="default-instruct")),
+        patch("bubblehub.cli.prompt.EngineSession") as session_cls,
     ):
         session = session_cls.return_value.__enter__.return_value
         session.chat.return_value = "direct"

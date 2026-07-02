@@ -61,14 +61,14 @@ ARG LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp.git
 ARG LLAMA_CPP_REF=master
 
 RUN --mount=type=cache,target=/root/.cache/ccache \
-    git clone --depth 1 --branch "${LLAMA_CPP_REF}" "${LLAMA_CPP_REPO}" /tmp/ageos-llama.cpp && \
-    cmake -S /tmp/ageos-llama.cpp -B /tmp/ageos-llama.cpp/build -DLLAMA_CURL=OFF && \
-    cmake --build /tmp/ageos-llama.cpp/build --target llama-server --parallel "$(nproc)" && \
-    install -m 0755 /tmp/ageos-llama.cpp/build/bin/llama-server /usr/local/bin/llama-server && \
+    git clone --depth 1 --branch "${LLAMA_CPP_REF}" "${LLAMA_CPP_REPO}" /tmp/bubblehub-llama.cpp && \
+    cmake -S /tmp/bubblehub-llama.cpp -B /tmp/bubblehub-llama.cpp/build -DLLAMA_CURL=OFF && \
+    cmake --build /tmp/bubblehub-llama.cpp/build --target llama-server --parallel "$(nproc)" && \
+    install -m 0755 /tmp/bubblehub-llama.cpp/build/bin/llama-server /usr/local/bin/llama-server && \
     mkdir -p /usr/local/lib/x86_64-linux-gnu && \
-    find /tmp/ageos-llama.cpp/build -name 'lib*.so*' -exec cp -a --remove-destination {} /usr/local/lib/x86_64-linux-gnu/ \; && \
+    find /tmp/bubblehub-llama.cpp/build -name 'lib*.so*' -exec cp -a --remove-destination {} /usr/local/lib/x86_64-linux-gnu/ \; && \
     ldconfig && \
-    rm -rf /tmp/ageos-llama.cpp
+    rm -rf /tmp/bubblehub-llama.cpp
 
 FROM base AS source
 
@@ -83,7 +83,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/src/app/target \
     ./scripts/ci/build-tauri-app.sh && \
-    install -D app/target/release/ageos-control-center /out/ageos-control-center
+    install -D app/target/release/bubblehub-control-center /out/bubblehub-control-center
 
 FROM source AS unit-test
 
@@ -96,14 +96,14 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m pip install ".[dev]" && \
-    rm -rf libageos/build && \
+    rm -rf libbubblehub/build && \
     coverage_args="" && \
     if [ "$MESON_COVERAGE" = "true" ]; then coverage_args="-Db_coverage=true"; fi && \
-    meson setup libageos/build libageos --prefix=/usr/local $coverage_args && \
-    meson compile -C libageos/build && \
-    meson install -C libageos/build --no-rebuild && \
-    chown root:root /usr/local/bin/ageos-sandbox && \
-    chmod 4755 /usr/local/bin/ageos-sandbox && \
+    meson setup libbubblehub/build libbubblehub --prefix=/usr/local $coverage_args && \
+    meson compile -C libbubblehub/build && \
+    meson install -C libbubblehub/build --no-rebuild && \
+    chown root:root /usr/local/bin/bubblehub-sandbox && \
+    chmod 4755 /usr/local/bin/bubblehub-sandbox && \
     ldconfig
 
 CMD ["scripts/ci/run-unit-tests.sh"]
@@ -117,23 +117,23 @@ RUN SUDO= /src/scripts/create-rootfs.sh
 FROM rootfs AS runtime
 
 COPY . /src
-COPY --from=tauri-app /out/ageos-control-center /usr/local/bin/ageos-control-center
+COPY --from=tauri-app /out/bubblehub-control-center /usr/local/bin/bubblehub-control-center
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    AGEOS_INSTALL_APP=1 AGEOS_SKIP_TAURI=1 AGEOS_SKIP_MODEL_SETUP=1 SUDO= ./scripts/build.sh && \
-    ageos --help && \
-    command -v ageos-control-center
+    BUBBLEHUB_INSTALL_APP=1 BUBBLEHUB_SKIP_TAURI=1 BUBBLEHUB_SKIP_MODEL_SETUP=1 SUDO= ./scripts/build.sh && \
+    bubblehub --help && \
+    command -v bubblehub-control-center
 
-CMD ["ageos", "--help"]
+CMD ["bubblehub", "--help"]
 
 FROM runtime AS integration-test
 
-ENV AGEOS_RUN_INTEGRATION=1 \
-    AGEOS_CACHE=/cache/ageos \
-    AGEOS_MODELS_CONFIG=/cache/ageos/ci-models.yaml \
-    AGEOS_INTEGRATION_WORKSPACE_DIR=/cache/ageos/integration-workspaces \
-    AGEOS_LLAMA_CTX_SIZE=512 \
-    AGEOS_MAX_OUTPUT_TOKENS=32 \
+ENV BUBBLEHUB_RUN_INTEGRATION=1 \
+    BUBBLEHUB_CACHE=/cache/bubblehub \
+    BUBBLEHUB_MODELS_CONFIG=/cache/bubblehub/ci-models.yaml \
+    BUBBLEHUB_INTEGRATION_WORKSPACE_DIR=/cache/bubblehub/integration-workspaces \
+    BUBBLEHUB_LLAMA_CTX_SIZE=512 \
+    BUBBLEHUB_MAX_OUTPUT_TOKENS=32 \
     NO_PROXY=127.0.0.1,localhost \
     OPENCLAW_CACHE_DIR=/cache/openclaw
 

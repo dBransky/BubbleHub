@@ -34,7 +34,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             request_id,
             {
                 "protocolVersion": "2025-06-18",
-                "serverInfo": {"name": "ageos-web-search", "version": "0.1.0"},
+                "serverInfo": {"name": "bubblehub-web-search", "version": "0.1.0"},
                 "capabilities": {"tools": {}},
             },
         )
@@ -78,7 +78,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
 def search_web(query: str) -> str:
     if not query:
         return "search_error=query is required"
-    search_url = os.environ.get("AGEOS_MCP_SEARCH_URL", DEFAULT_SEARCH_URL)
+    search_url = os.environ.get("BUBBLEHUB_MCP_SEARCH_URL", DEFAULT_SEARCH_URL)
     try:
         response = requests.get(
             search_url,
