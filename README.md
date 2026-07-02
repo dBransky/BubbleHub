@@ -175,7 +175,7 @@ sudo apt install ./BubbleHub-0.1.0-x64.deb
 Use the matching runtime image:
 
 ```bash
-docker pull ghcr.io/bublhub/BubbleHub:v0.1.0
+docker pull ghcr.io/bublhub/bubblehub:v0.1.0
 ```
 ## Build from source
 
@@ -210,11 +210,11 @@ Integration tests also need persistent caches for the model and OpenClaw depende
 docker volume create bubblehub-cache-local
 docker volume create bubblehub-openclaw-local
 
-docker build -f docker/Dockerfile --target integration-test -t BubbleHub:integration .
+docker build -f docker/Dockerfile --target integration-test -t bubblehub:integration .
 docker run --rm --privileged --security-opt seccomp=unconfined \
   -v bubblehub-cache-local:/cache/bubblehub \
   -v bubblehub-openclaw-local:/cache/openclaw \
-  BubbleHub:integration
+  bubblehub:integration
 ```
 
 ### Interactive Docker Development
@@ -231,7 +231,7 @@ docker run -it --rm \
   -e OPENCLAW_CACHE_DIR=/cache/openclaw \
   -v bubblehub-cache-local:/cache/bubblehub \
   -v bubblehub-openclaw-local:/cache/openclaw \
-  BubbleHub:integration \
+  bubblehub:integration \
   bash
 ```
 

@@ -117,12 +117,12 @@ HTML reports are written under `.ci-artifacts/coverage/`. CI also keeps those re
 docker volume create bubblehub-cache-local
 docker volume create bubblehub-openclaw-local
 
-docker build -f docker/Dockerfile --target integration-test -t BubbleHub:integration .
+docker build -f docker/Dockerfile --target integration-test -t bubblehub:integration .
 
 docker run --rm --privileged --security-opt seccomp=unconfined \
   -v bubblehub-cache-local:/cache/bubblehub \
   -v bubblehub-openclaw-local:/cache/openclaw \
-  BubbleHub:integration
+  bubblehub:integration
 ```
 
 For an interactive shell in the same image (sandbox exploration, OpenClaw, MCP experiments), see [Interactive Docker Development](README.md#interactive-docker-development) in the README.

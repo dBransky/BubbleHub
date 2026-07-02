@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${BUBBLEHUB_REPO:-bublhub/BubbleHub}"
+REPO="${BUBBLEHUB_REPO:-bublhub/bubblehub}"
 VERSION="${BUBBLEHUB_VERSION:-latest}"
 ASSET_NAME="${BUBBLEHUB_ASSET_NAME:-bubblehub-source.tar.gz}"
 TMP_DIR="$(mktemp -d)"

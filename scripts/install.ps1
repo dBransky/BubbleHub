@@ -1,6 +1,6 @@
 $ErrorActionPreference = "Stop"
 
-$Repo = if ($env:BUBBLEHUB_REPO) { $env:BUBBLEHUB_REPO } else { "bublhub/BubbleHub" }
+$Repo = if ($env:BUBBLEHUB_REPO) { $env:BUBBLEHUB_REPO } else { "bublhub/bubblehub" }
 $Version = if ($env:BUBBLEHUB_VERSION) { $env:BUBBLEHUB_VERSION } else { "latest" }
 
 if ($Version -eq "latest") {

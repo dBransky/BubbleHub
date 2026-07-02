@@ -3,7 +3,7 @@ set -euo pipefail
 
 VERSION_TAG="${1:?usage: scripts/package-release.sh <version-tag> <output-dir>}"
 OUTPUT_DIR="${2:?usage: scripts/package-release.sh <version-tag> <output-dir>}"
-REPO="${BUBBLEHUB_REPO:-bublhub/BubbleHub}"
+REPO="${BUBBLEHUB_REPO:-bublhub/bubblehub}"
 RUNTIME_IMAGE="${BUBBLEHUB_RUNTIME_IMAGE:-ghcr.io/${REPO}:${VERSION_TAG}}"
 VERSION="${VERSION_TAG#v}"
 PACKAGE_NAME="BubbleHub-${VERSION}-x64"

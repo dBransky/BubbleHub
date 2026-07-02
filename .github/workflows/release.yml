@@ -108,7 +108,7 @@ jobs:
           file: docker/Dockerfile
           target: integration-test
           load: true
-          tags: BubbleHub:integration-${{ github.sha }}
+          tags: bubblehub:integration-${{ github.sha }}
           cache-from: |
             type=gha,scope=integration-test
             type=gha,scope=unit-test
@@ -132,7 +132,7 @@ jobs:
             -e OPENCLAW_CACHE_DIR \
             -v "${{ github.workspace }}/.bubblehub-cache:/cache/bubblehub" \
             -v "${{ github.workspace }}/.openclaw-cache:/cache/openclaw" \
-            BubbleHub:integration-${{ github.sha }}
+            bubblehub:integration-${{ github.sha }}
           status=$?
 
           mkdir -p .ci-artifacts
