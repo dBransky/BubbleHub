@@ -98,7 +98,7 @@ C tests live under `libbubble/tests/` and link against the built `libbubble.so`.
 
 ### Coverage
 
-CI uploads C and Python Cobertura reports to [Codecov](https://codecov.io/gh/bublhub/BubbleHub). The project target is 45% line coverage (see `codecov.yml`). To reproduce the coverage run locally:
+CI uploads Python unit coverage, unit `libbubble` C coverage, and integration-driven `libbubble` C coverage to [Codecov](https://codecov.io/gh/bublhub/BubbleHub). The project target is 45% line coverage (see `codecov.yml`). Codecov reporting runs after both unit and integration coverage artifacts are available so PR comments and merge-status coverage checks use the complete report set. To reproduce the unit coverage run locally:
 
 ```bash
 docker build -f docker/Dockerfile --target unit-test \
@@ -109,7 +109,7 @@ docker run --rm --privileged --security-opt seccomp=unconfined \
   bubblehub:unit-cov scripts/ci/run-unit-tests-coverage.sh
 ```
 
-HTML reports are written under `.ci-artifacts/coverage/`. CI also keeps those reports as workflow artifacts; Codecov provides the dashboard, PR comments, and README badge.
+HTML reports are written under `.ci-artifacts/coverage/`. CI also keeps those reports as workflow artifacts; Codecov provides the dashboard, PR comments, and README badge. Integration coverage is collected in CI with `scripts/ci/run-integration-tests-coverage.sh`; use the regular integration test command below for local validation unless you are specifically debugging coverage collection.
 
 ### Integration Tests
 

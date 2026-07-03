@@ -131,6 +131,18 @@ CMD ["bubble", "--help"]
 
 FROM runtime AS integration-test
 
+ARG MESON_COVERAGE=false
+
+RUN if [ "$MESON_COVERAGE" = "true" ]; then \
+      rm -rf libbubble/build && \
+      meson setup libbubble/build libbubble --prefix=/usr/local -Db_coverage=true && \
+      meson compile -C libbubble/build && \
+      meson install -C libbubble/build --no-rebuild && \
+      chown root:root /usr/local/bin/bubblehub-sandbox && \
+      chmod 4755 /usr/local/bin/bubblehub-sandbox && \
+      ldconfig; \
+    fi
+
 ENV BUBBLEHUB_RUN_INTEGRATION=1 \
     BUBBLEHUB_CACHE=/cache/bubblehub \
     BUBBLEHUB_MODELS_CONFIG=/cache/bubblehub/ci-models.yaml \

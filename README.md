@@ -211,7 +211,7 @@ docker build -f docker/Dockerfile --target unit-test -t bubblehub:unit .
 docker run --rm --privileged --security-opt seccomp=unconfined bubblehub:unit
 ```
 
-CI enforces line coverage through [Codecov](https://codecov.io/gh/bublhub/BubbleHub) (45% project target for `libbubble` and `bubblehub`). See [CONTRIBUTING.md](CONTRIBUTING.md#coverage) for the local coverage command and HTML report locations.
+CI enforces line coverage through [Codecov](https://codecov.io/gh/bublhub/BubbleHub) (45% project target for `libbubble` and `bubblehub`) using unit and integration coverage reports. See [CONTRIBUTING.md](CONTRIBUTING.md#coverage) for the local unit coverage command and HTML report locations.
 
 Integration tests also need persistent caches for the model and OpenClaw dependencies. Use Docker named volumes instead of `$PWD` bind mounts, which can fail on remote/NFS workspaces:
 

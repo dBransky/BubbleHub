@@ -1,11 +1,24 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
+import requests
 
 from bubblehub.cli.run import _apply_sandbox_inference_env, _sandbox_inference_endpoint
-from bubblehub.inference import InferenceConfig, apply_inference_env, ensure_inference_endpoint, load_inference_config
+from bubblehub.inference import (
+    InferenceConfig,
+    _append_no_proxy,
+    _bubblehub_python,
+    _config_for_base_url,
+    _load_models_config,
+    _optional_int,
+    apply_inference_env,
+    ensure_inference_endpoint,
+    is_healthy,
+    load_inference_config,
+    wait_until_healthy,
+)
 
 
 def test_load_inference_config_from_bundled_yaml() -> None:
@@ -123,3 +136,128 @@ def test_apply_sandbox_inference_env_rewrites_endpoint() -> None:
     assert env["BUBBLEHUB_SANDBOX_INFERENCE_HOST"] == "127.0.0.1"
     assert env["BUBBLEHUB_SANDBOX_INFERENCE_PORT"] == "8000"
     assert env["BUBBLEHUB_NETWORK"] == "inference-only"
+
+
+def test_load_inference_config_env_overrides_and_bad_yaml_shape(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_path = tmp_path / "models.yaml"
+    config_path.write_text("[]\n", encoding="utf-8")
+    monkeypatch.setenv("BUBBLEHUB_MODELS_CONFIG", str(config_path))
+    monkeypatch.setenv("BUBBLEHUB_INFERENCE_HOST", "0.0.0.0")
+    monkeypatch.setenv("BUBBLEHUB_INFERENCE_PORT", "9000")
+    monkeypatch.setenv("BUBBLEHUB_INFERENCE_SPECIALTY", "env-specialty")
+
+    config = load_inference_config()
+
+    assert config.host == "0.0.0.0"
+    assert config.port == 9000
+    assert config.default_specialty == "env-specialty"
+    assert "models" in _load_models_config()
+
+
+def test_load_inference_config_handles_non_dict_inference_section(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BUBBLEHUB_INFERENCE_HOST", raising=False)
+    monkeypatch.delenv("BUBBLEHUB_INFERENCE_PORT", raising=False)
+    monkeypatch.delenv("BUBBLEHUB_INFERENCE_SPECIALTY", raising=False)
+    monkeypatch.delenv("BUBBLEHUB_SPECIALITY", raising=False)
+
+    with patch("bubblehub.inference._load_models_config", return_value={"inference": []}):
+        config = load_inference_config()
+
+    assert config == InferenceConfig(host="127.0.0.1", port=8000, default_specialty="default-instruct")
+
+
+def test_load_models_config_merges_home_and_explicit_overrides(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    home_override = home / ".config" / "bubblehub" / "models.yaml"
+    home_override.parent.mkdir(parents=True)
+    home_override.write_text(
+        """
+inference:
+  port: 8100
+specialties:
+  home-specialty:
+    capability: instruct
+""",
+        encoding="utf-8",
+    )
+    explicit = tmp_path / "explicit.yaml"
+    explicit.write_text(
+        """
+specialties:
+  explicit-specialty:
+    capability: code
+extra: true
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("BUBBLEHUB_MODELS_CONFIG", str(explicit))
+
+    data = _load_models_config()
+
+    assert data["inference"]["port"] == 8100
+    assert "home-specialty" in data["specialties"]
+    assert "explicit-specialty" in data["specialties"]
+    assert data["extra"] is True
+
+
+def test_inference_health_wait_and_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
+    ok_response = Mock(status_code=204)
+    bad_response = Mock(status_code=503)
+    with patch("bubblehub.inference.requests.get", return_value=ok_response):
+        assert is_healthy("http://127.0.0.1:8000")
+    with patch("bubblehub.inference.requests.get", return_value=bad_response):
+        assert not is_healthy("http://127.0.0.1:8000")
+    with patch("bubblehub.inference.requests.get", side_effect=requests.RequestException):
+        assert not is_healthy("http://127.0.0.1:8000")
+
+    with patch("bubblehub.inference.is_healthy", side_effect=[False, True]) as healthy, patch("bubblehub.inference.time.sleep") as sleep:
+        wait_until_healthy("http://127.0.0.1:8000", timeout_seconds=1)
+    assert healthy.call_count == 2
+    sleep.assert_called_once_with(0.25)
+
+    with (
+        patch("bubblehub.inference.is_healthy", return_value=False),
+        patch("bubblehub.inference.time.sleep"),
+        patch("bubblehub.inference.time.time", side_effect=[0, 2]),
+        pytest.raises(RuntimeError, match="did not become healthy"),
+    ):
+        wait_until_healthy("http://127.0.0.1:8000", timeout_seconds=1)
+
+
+def test_inference_config_url_parsing_and_env_helpers(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    fallback = InferenceConfig(host="127.0.0.1", port=8000, default_specialty="default")
+    assert _config_for_base_url("ftp://example.com:9000", fallback) == fallback
+    assert _config_for_base_url("http://example.com", fallback) == InferenceConfig("example.com", 8000, "default")
+    assert _config_for_base_url("http://example.com:9001", fallback) == InferenceConfig("example.com", 9001, "default")
+
+    assert _append_no_proxy("example.com,127.0.0.1") == "example.com,127.0.0.1,localhost"
+    assert _optional_int("7") == 7
+    assert _optional_int("0") is None
+    assert _optional_int("bad") is None
+    assert _optional_int(None) is None
+
+    custom_python = tmp_path / "python"
+    custom_python.write_text("", encoding="utf-8")
+    monkeypatch.setenv("BUBBLEHUB_PYTHON", str(custom_python))
+    assert _bubblehub_python() == str(custom_python)
+
+
+def test_start_inference_daemon_forwards_log_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+
+    from bubblehub.inference import _start_inference_daemon
+
+    monkeypatch.setenv("BUBBLEHUB_LOG_FILE", "/tmp/bubblehub.log")
+    monkeypatch.setenv("BUBBLEHUB_LOG_LEVEL", "debug")
+    config = InferenceConfig(host="127.0.0.2", port=8123, default_specialty="code")
+    with patch("bubblehub.inference.subprocess.Popen") as popen:
+        _start_inference_daemon(config)
+
+    env = popen.call_args.kwargs["env"]
+    assert env["BUBBLEHUB_INFERENCE_HOST"] == "127.0.0.2"
+    assert env["BUBBLEHUB_INFERENCE_PORT"] == "8123"
+    assert env["BUBBLEHUB_INFERENCE_SPECIALTY"] == "code"
+    assert env["BUBBLEHUB_LOG_FILE"] == "/tmp/bubblehub.log"
+    assert popen.call_args.kwargs["start_new_session"] is True
+    assert popen.call_args.kwargs["stdout"] is subprocess.DEVNULL

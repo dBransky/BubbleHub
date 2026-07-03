@@ -59,14 +59,6 @@ jobs:
         if: always()
         run: scripts/ci/write-coverage-summary.sh .ci-artifacts/coverage
 
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: .ci-artifacts/coverage/python/coverage.xml,.ci-artifacts/coverage/c/coverage.xml
-          disable_search: true
-          fail_ci_if_error: true
-
       - name: Upload coverage reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -112,7 +104,7 @@ jobs:
 
       - name: Prepare cache and artifact directories
         run: |
-          mkdir -p .bubblehub-cache/integration-workspaces .openclaw-cache .ci-artifacts
+          mkdir -p .bubblehub-cache/integration-workspaces .openclaw-cache .ci-artifacts/coverage/integration
           chmod -R a+rwX .bubblehub-cache .openclaw-cache
 
       - name: Build integration test image
@@ -123,6 +115,8 @@ jobs:
           target: integration-test
           load: true
           tags: bubblehub:integration-${{ github.sha }}
+          build-args: |
+            MESON_COVERAGE=true
           cache-from: |
             type=gha,scope=integration-test
             type=gha,scope=unit-test
@@ -146,7 +140,9 @@ jobs:
             -e OPENCLAW_CACHE_DIR \
             -v "${{ github.workspace }}/.bubblehub-cache:/cache/bubblehub" \
             -v "${{ github.workspace }}/.openclaw-cache:/cache/openclaw" \
-            bubblehub:integration-${{ github.sha }}
+            -v "${{ github.workspace }}/.ci-artifacts/coverage/integration:/coverage-out" \
+            bubblehub:integration-${{ github.sha }} \
+            scripts/ci/run-integration-tests-coverage.sh
           status=$?
 
           mkdir -p .ci-artifacts
@@ -155,6 +151,15 @@ jobs:
           docker cp bubblehub-integration:/cache/bubblehub/integration-workspaces .ci-artifacts/integration-workspaces >/dev/null 2>&1 || true
           docker rm -f bubblehub-integration >/dev/null 2>&1 || true
           exit "$status"
+
+      - name: Upload integration coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-coverage-reports
+          if-no-files-found: ignore
+          include-hidden-files: true
+          path: .ci-artifacts/coverage/integration/
 
       - name: Upload integration logs
         if: failure()
@@ -181,11 +186,36 @@ jobs:
           mkdir -p .bubblehub-cache/integration-workspaces
           chmod -R a+rwX .bubblehub-cache/integration-workspaces
 
-  release-smoke-assets:
+  codecov:
+    name: Upload coverage to Codecov
     runs-on: ubuntu-22.04
     needs:
       - unit-tests
       - integration-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage-reports
+          path: .ci-artifacts/coverage
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: integration-coverage-reports
+          path: .ci-artifacts/coverage/integration
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: .ci-artifacts/coverage/python/coverage.xml,.ci-artifacts/coverage/c/coverage.xml,.ci-artifacts/coverage/integration/c/coverage.xml
+          disable_search: true
+          fail_ci_if_error: true
+
+  release-smoke-assets:
+    runs-on: ubuntu-22.04
+    needs: codecov
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4

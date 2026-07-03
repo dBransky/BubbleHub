@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import requests
 
 from bubblehub.engine.registry import ModelSpec
-from bubblehub.engine.session import EngineSession
+from bubblehub.engine.session import EngineSession, _int_or_zero, _limit_gb, _parse_port, default_max_output_tokens
 from bubblehub.native import HardwareInfo
 
 GPU_MODEL = ModelSpec(
@@ -130,6 +131,102 @@ def test_engine_session_requires_sandbox_inference_endpoint(monkeypatch) -> None
     with pytest.raises(RuntimeError, match="BUBBLEHUB_SANDBOX_INFERENCE_HOST"):
         with EngineSession("default-instruct"):
             pass
+
+
+def test_engine_session_rejects_no_candidates_and_unstarted_chat(monkeypatch) -> None:
+    _patch_session_dependencies(monkeypatch, [])
+
+    with pytest.raises(RuntimeError, match="no model matches"):
+        with EngineSession("default-instruct", scheduler=FakeScheduler()):
+            pass
+
+    session = EngineSession("default-instruct", scheduler=FakeScheduler())
+    with pytest.raises(RuntimeError, match="not started"):
+        session.chat([{"role": "user", "content": "hi"}])
+
+
+def test_engine_session_requires_scheduler_after_resolve(monkeypatch) -> None:
+    _patch_session_dependencies(monkeypatch, [CPU_MODEL])
+    session = EngineSession("default-instruct", scheduler=FakeScheduler())
+    with session:
+        session.scheduler = None
+        with pytest.raises(RuntimeError, match="scheduler is not started"):
+            session.chat([{"role": "user", "content": "hi"}])
+
+
+def test_engine_session_sandbox_embeddings_and_invalid_responses(monkeypatch) -> None:
+    import bubblehub.engine.session as session_module
+
+    payloads = [
+        {"data": [{"embedding": [1, 2]}, {"embedding": (3, 4)}]},
+        {"bad": True},
+        {"choices": []},
+    ]
+
+    def post(url: str, *, json: dict[str, object], timeout: float) -> FakeResponse:
+        del url, json, timeout
+        return FakeResponse(payloads.pop(0))
+
+    monkeypatch.setenv("BUBBLEHUB_SANDBOX", "1")
+    monkeypatch.setenv("BUBBLEHUB_SANDBOX_INFERENCE_HOST", "127.0.0.1")
+    monkeypatch.setenv("BUBBLEHUB_SANDBOX_INFERENCE_PORT", "8123")
+    monkeypatch.setattr(session_module.requests, "post", post)
+
+    with EngineSession("default-instruct") as session:
+        assert session.embeddings(["one", "two"]) == [[1, 2], [3, 4]]
+        with pytest.raises(RuntimeError, match="invalid embeddings"):
+            session.embeddings(["bad"])
+        with pytest.raises(RuntimeError, match="invalid chat completion"):
+            session.chat([{"role": "user", "content": "hi"}])
+
+
+def test_engine_session_sandbox_post_errors(monkeypatch) -> None:
+    import bubblehub.engine.session as session_module
+
+    class RaisingResponse:
+        def raise_for_status(self) -> None:
+            raise requests.HTTPError("boom")
+
+        def json(self) -> dict[str, object]:
+            raise AssertionError("json should not be read after HTTP error")
+
+    monkeypatch.setattr(session_module.requests, "post", lambda *args, **kwargs: RaisingResponse())
+    with pytest.raises(RuntimeError, match="sandbox inference request failed"):
+        session_module._post_sandbox_json("http://127.0.0.1:8123/v1/chat/completions", {})
+
+    monkeypatch.setattr(session_module.requests, "post", lambda *args, **kwargs: FakeResponse(["not", "object"]))  # type: ignore[arg-type]
+    with pytest.raises(RuntimeError, match="non-object JSON"):
+        session_module._post_sandbox_json("http://127.0.0.1:8123/v1/chat/completions", {})
+
+
+def test_engine_session_helpers_and_default_tokens(monkeypatch) -> None:
+    assert _parse_port("8123") == 8123
+    for value in ["bad", "0", "70000"]:
+        with pytest.raises(RuntimeError, match="BUBBLEHUB_SANDBOX_INFERENCE_PORT"):
+            _parse_port(value)
+
+    assert _limit_gb(None, 8 * 1024**3) == 8
+    assert _limit_gb("1073741824", 8 * 1024**3) == 1
+    assert _int_or_zero("42") == 42
+    assert _int_or_zero("bad") == 0
+
+    monkeypatch.delenv("BUBBLEHUB_MAX_OUTPUT_TOKENS", raising=False)
+    assert default_max_output_tokens() == 512
+    monkeypatch.setenv("BUBBLEHUB_MAX_OUTPUT_TOKENS", "64")
+    assert default_max_output_tokens() == 64
+    monkeypatch.setenv("BUBBLEHUB_MAX_OUTPUT_TOKENS", "bad")
+    with pytest.raises(RuntimeError, match="must be an integer"):
+        default_max_output_tokens()
+    monkeypatch.setenv("BUBBLEHUB_MAX_OUTPUT_TOKENS", "0")
+    with pytest.raises(RuntimeError, match="greater than zero"):
+        default_max_output_tokens()
+
+
+def test_engine_session_status_callback() -> None:
+    messages: list[str] = []
+    session = EngineSession("default-instruct", status_callback=messages.append)
+    session._status("loading")
+    assert messages == ["loading"]
 
 
 class FakeRegistry:

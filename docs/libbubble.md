@@ -122,4 +122,4 @@ meson compile -C libbubble/build
 meson test -C libbubble/build --print-errorlogs
 ```
 
-Current coverage includes access policy, HTTP proxy, logging, hardware detection, cgroup limits, overlay/mount helpers, Landlock, scheduler state, and sandbox config validation. Full sandbox execution and the `bubblehub-sandbox` CLI wrapper are covered by Python integration tests under `tests/`.
+Current coverage includes access policy, HTTP proxy, logging, hardware detection, cgroup limits, overlay/mount helpers, Landlock, scheduler state, and sandbox config validation. CI also collects integration-driven `libbubble` coverage from the sandbox, proxy, and runtime paths exercised by Python integration tests under `tests/`.

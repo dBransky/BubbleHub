@@ -1,16 +1,22 @@
 from __future__ import annotations
 
 import io
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+
+import pytest
 
 from bubblehub.app.desktop import (
     DesktopAppConfig,
     _app_deps_script,
+    _app_manifest_path,
+    _ask_install_desktop_app,
+    _can_prompt,
     _choose_desktop_app_install,
     _install_tauri_app,
     _normalize_yes_no,
     _prompt_and_install_tauri_app,
     _run_app_deps_installer,
+    _serve_until_interrupt,
     _tauri_command,
     run_desktop_app,
 )
@@ -148,3 +154,86 @@ def test_normalize_yes_no_values() -> None:
     assert _normalize_yes_no("yes") is True
     assert _normalize_yes_no("off") is False
     assert _normalize_yes_no("later") is None
+
+
+def test_desktop_server_only_serves_until_interrupt(monkeypatch, capsys) -> None:
+    server = Mock()
+    server.server_address = ("127.0.0.1", 8123)
+
+    class ImmediateThread:
+        def __init__(self, target, daemon: bool) -> None:
+            self.target = target
+            self.daemon = daemon
+
+        def start(self) -> None:
+            self.target()
+
+    monkeypatch.setattr("bubblehub.app.desktop.create_control_server", lambda config: server)
+    monkeypatch.setattr("bubblehub.app.desktop.Thread", ImmediateThread)
+    monkeypatch.setattr("bubblehub.app.desktop._serve_until_interrupt", lambda server, url: print(f"served {url}"))
+
+    run_desktop_app(DesktopAppConfig(port=8123, server_only=True))
+
+    server.serve_forever.assert_called_once()
+    server.shutdown.assert_called_once()
+    server.server_close.assert_called_once()
+    assert "served http://127.0.0.1:8123/" in capsys.readouterr().out
+
+
+def test_launch_tauri_app_raises_on_nonzero_exit(monkeypatch) -> None:
+    monkeypatch.setattr("bubblehub.app.desktop._tauri_command", lambda: ["/bin/false"])
+    monkeypatch.setattr("bubblehub.app.desktop.subprocess.run", lambda *args, **kwargs: Mock(returncode=7))
+
+    with pytest.raises(RuntimeError, match="status 7"):
+        __import__("bubblehub.app.desktop", fromlist=["_launch_tauri_app"])._launch_tauri_app("http://127.0.0.1:9999/")
+
+
+def test_prompt_and_install_interactive_no_and_missing_cargo(monkeypatch) -> None:
+    monkeypatch.delenv("BUBBLEHUB_INSTALL_APP", raising=False)
+    monkeypatch.setattr("bubblehub.app.desktop._can_prompt", lambda: True)
+    monkeypatch.setattr("bubblehub.app.desktop._ask_install_desktop_app", lambda: False)
+    assert _prompt_and_install_tauri_app() is None
+
+    monkeypatch.setenv("BUBBLEHUB_INSTALL_APP", "1")
+    monkeypatch.setattr("bubblehub.app.desktop._app_manifest_path", lambda: __import__("pathlib").Path("/tmp/Cargo.toml"))
+    monkeypatch.setattr("bubblehub.app.desktop.shutil.which", lambda name: None)
+    monkeypatch.setattr("bubblehub.app.desktop._run_app_deps_installer", lambda: None)
+    with pytest.raises(RuntimeError, match="cargo is required"):
+        _install_tauri_app()
+
+
+def test_desktop_prompt_and_path_helpers(monkeypatch) -> None:
+    monkeypatch.setattr("bubblehub.app.desktop._choose_desktop_app_install", lambda **kwargs: 0)
+    assert _ask_install_desktop_app() is True
+    monkeypatch.setattr("bubblehub.app.desktop._choose_desktop_app_install", lambda **kwargs: 1)
+    assert _ask_install_desktop_app() is False
+
+    monkeypatch.setattr("sys.stdin.isatty", lambda: True)
+    monkeypatch.setattr("sys.stderr.isatty", lambda: True)
+    assert _can_prompt() is True
+
+    monkeypatch.setattr("bubblehub.app.desktop.Path.is_file", lambda self: False)
+    with pytest.raises(RuntimeError, match="desktop app source"):
+        _app_manifest_path()
+
+
+def test_run_app_deps_installer_runs_when_script_exists(monkeypatch) -> None:
+    run = Mock()
+    monkeypatch.delenv("BUBBLEHUB_SKIP_APP_DEPS", raising=False)
+    monkeypatch.setattr("bubblehub.app.desktop._app_deps_script", lambda: __import__("pathlib").Path("/tmp/install-app-deps.sh"))
+    monkeypatch.setattr("bubblehub.app.desktop.subprocess.run", run)
+
+    _run_app_deps_installer()
+
+    run.assert_called_once_with(["bash", "/tmp/install-app-deps.sh"], check=True)
+
+
+def test_serve_until_interrupt_exits_cleanly(capsys) -> None:
+    class Stopper:
+        def wait(self, seconds: float) -> bool:
+            raise KeyboardInterrupt
+
+    with patch("bubblehub.app.desktop.Event", return_value=Stopper()):
+        _serve_until_interrupt(Mock(), "http://127.0.0.1:8123/")
+
+    assert "bubblehub: http://127.0.0.1:8123/" in capsys.readouterr().out
