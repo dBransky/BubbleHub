@@ -13,7 +13,10 @@ __pycache__/
 *.log
 *.pyc
 build/
-libbubblehub/build/
+app/target/
+libbubble/build/
+libbubble/.cache/
+node_modules/
 dist/
 release-assets/
 tmp/
@@ -22,5 +25,4 @@ examples/openclaw/openclaw/
 examples/**/.bubblehub/
 
 docker-compose*.yml
-build/
 .bubblehub-install-app-choice

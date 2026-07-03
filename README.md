@@ -30,13 +30,13 @@ irm https://bubblehub.ai/install.ps1 | iex
 Check it:
 
 ```bash
-bubblehub --help
+bubble --help
 ```
 
 Open the app:
 
 ```bash
-bubblehub app
+bubblehub
 ```
 
 Docker image:
@@ -56,40 +56,40 @@ FROM ghcr.io/bublhub/bubblehub:v0.1.0
 Ask the local model a question:
 
 ```bash
-bubblehub prompt --text "Say hello from BubbleHub"
+bubble prompt --text "Say hello from BubbleHub"
 ```
 
 Run an agent in the sandbox:
 
 ```bash
-bubblehub run --root-dir ./examples/basic --binary ./examples/basic/basic_agent.py --memory 16G
+bubble run --root-dir ./examples/basic --binary ./examples/basic/basic_agent.py --memory 16G
 ```
 
-Name an agent for `bubblehub ps`, the shell prompt, and the Control Center:
+Name an agent for `bubble ps`, the shell prompt, and the BubbleHub desktop app:
 
 ```bash
-bubblehub shell --name reviewer --root-dir ./workspace
-bubblehub ps --kill agt-...
+bubble shell --name reviewer --root-dir ./workspace
+bubble ps --kill agt-...
 ```
 
 Start the OpenAI-compatible local endpoint (optional):
 
 ```bash
-bubblehub serve
+bubble serve
 ```
 
 Pick or inspect models:
 
 ```bash
-bubblehub models
-bubblehub models list
-bubblehub models stop
+bubble models
+bubble models list
+bubble models stop
 ```
 
 Open app:
 
 ```bash
-bubblehub app
+bubblehub
 ```
 
 ## What BubbleHub Does
@@ -99,11 +99,11 @@ bubblehub app
 - Keeps warm model backends shared across agents.
 - Runs agents in a Linux sandbox with restricted filesystem and network access.
 - Injects local inference into agents as `OPENAI_BASE_URL` and `OPENAI_API_KEY`.
-- Provides the BubbleHub Control Center desktop app for graphical monitoring, manifest review, and base-model selection.
+- Provides the BubbleHub desktop app for graphical monitoring, manifest review, and base-model selection.
 
 ## Agent Environment
 
-`bubblehub run` starts the shared inference endpoint before launching an agent and injects:
+`bubble run` starts the shared inference endpoint before launching an agent and injects:
 
 ```bash
 OPENAI_BASE_URL=http://127.0.0.1:8000/v1
@@ -113,11 +113,11 @@ BUBBLEHUB_SANDBOX_INFERENCE_HOST=127.0.0.1
 BUBBLEHUB_SANDBOX_INFERENCE_PORT=8000
 ```
 
-Sandboxed agents only get access to the local inference endpoint by default. HTTP clients see a loopback policy proxy at `http://127.0.0.1:18080`, and BubbleHub injects `HTTP_PROXY`, `HTTPS_PROXY`, `http_proxy`, and `https_proxy` for isolated sandboxes. The proxy is owned by `libbubblehub`: it checks the persistent sandbox access manifest under `~/.local/state/bubblehub/sandboxes/<agent-id>/access-manifest.json` (or `BUBBLEHUB_STATE_DIR`) and either forwards allowed requests or returns a logged `403`. Unknown requests fail closed; when no host prompt is available, BubbleHub records them as pending in the manifest for later dashboard review. Use `--allow-network` with `bubblehub run` or `bubblehub shell` when an agent setup step needs general outbound network access.
+Sandboxed agents only get access to the local inference endpoint by default. HTTP clients see a loopback policy proxy at `http://127.0.0.1:18080`, and BubbleHub injects `HTTP_PROXY`, `HTTPS_PROXY`, `http_proxy`, and `https_proxy` for isolated sandboxes. The proxy is owned by `libbubble`: it checks the persistent sandbox access manifest under `~/.local/state/bubblehub/sandboxes/<agent-id>/access-manifest.json` (or `BUBBLEHUB_STATE_DIR`) and either forwards allowed requests or returns a logged `403`. Unknown requests fail closed; when no host prompt is available, BubbleHub records them as pending in the manifest for later dashboard review. Use `--allow-network` with `bubble run` or `bubble shell` when an agent setup step needs general outbound network access.
 
-When `bubblehub run` or `bubblehub shell` is connected to a real terminal, first access to a new host pauses the agent and prompts on the host for `always`, `never`, or `ask every time (approve now)`. Non-interactive runs fail closed and print a reminder to run `bubblehub dashboard`; the dashboard resolves pending sandbox access requests before the live resource view opens. Use `bubblehub manifest --root-dir <dir>` or `bubblehub manifest --agent-id <agent>` to inspect and edit persisted policies. Manifest policies are exactly `always`, `never`, or `ask`; HTTP policies match domains plus the visible HTTP method/path, while HTTPS `CONNECT` can only be matched at the host/port level.
+When `bubble run` or `bubble shell` is connected to a real terminal, first access to a new host pauses the agent and prompts on the host for `always`, `never`, or `ask every time (approve now)`. Non-interactive runs fail closed and print a reminder to run `bubble dashboard`; the dashboard resolves pending sandbox access requests before the live resource view opens. Use `bubble manifest --root-dir <dir>` or `bubble manifest --agent-id <agent>` to inspect and edit persisted policies. Manifest policies are exactly `always`, `never`, or `ask`; HTTP policies match domains plus the visible HTTP method/path, while HTTPS `CONNECT` can only be matched at the host/port level.
 
-When `--root-dir` is provided, non-system binaries must live inside that root and BubbleHub mounts the root as the sandbox workspace. System binaries from `/usr`, `/bin`, `/sbin`, or `/opt/bubblehub` can still be used with a root directory, which lets `bubblehub shell --root-dir <dir>` open a shell inside the workspace sandbox. When `--root-dir` is omitted, non-system binaries are copied into a temporary workspace before the sandbox starts. Inside the sandbox, BubbleHub Python prompt/shim calls detect `BUBBLEHUB_SANDBOX=1` and use the forwarded inference endpoint instead of loading the native shared library.
+When `--root-dir` is provided, non-system binaries must live inside that root and BubbleHub mounts the root as the sandbox workspace. System binaries from `/usr`, `/bin`, `/sbin`, or `/opt/bubblehub` can still be used with a root directory, which lets `bubble shell --root-dir <dir>` open a shell inside the workspace sandbox. When `--root-dir` is omitted, non-system binaries are copied into a temporary workspace before the sandbox starts. Inside the sandbox, BubbleHub Python prompt/shim calls detect `BUBBLEHUB_SANDBOX=1` and use the forwarded inference endpoint instead of loading the native shared library.
 
 Installed sandboxes run over an Ubuntu 26.04 root filesystem using a per-agent overlay. The Ubuntu lower filesystem stays unchanged; writes outside the workspace copy up into `.bubblehub/agents/<agent-id>/overlay/upper` and persist with that agent. Use `--force-new-sandbox` or `--overwrite-sandbox` to discard the persistent home and private overlay for the current workspace.
 
@@ -128,7 +128,7 @@ For implementation details, security assumptions, and known gaps, see [`docs/san
 OpenClaw can be installed entirely from inside the sandbox. The persistent agent home keeps `nvm`, npm global packages, and OpenClaw config across runs.
 
 ```bash
-bubblehub shell --allow-network --root-dir openclaw
+bubble shell --allow-network --root-dir openclaw
 ```
 
 Inside the sandbox shell:
@@ -163,7 +163,7 @@ CI also builds synthetic release assets for pull requests and validates installa
 - Windows PowerShell install on a self-hosted Windows desktop runner
 - Windows `.exe` bootstrapper install on a separate self-hosted Windows desktop runner
 
-Each smoke test installs a previous synthetic version, verifies `bubblehub --version` and the Control Center `/health` response, installs the current synthetic version over it, and verifies the runtime reports the updated version. The Windows release-install jobs require `[self-hosted, Windows, X64]` runners with an interactive desktop, WSL2/WSLg, Python, a clean Ubuntu base distro, and permission to import disposable WSL distros.
+Each smoke test installs a previous synthetic version, verifies `bubble --version` and the desktop `/health` response, installs the current synthetic version over it, and verifies the runtime reports the updated version. The Windows release-install jobs require `[self-hosted, Windows, X64]` runners with an interactive desktop, WSL2/WSLg, Python, a clean Ubuntu base distro, and permission to import disposable WSL distros.
 
 For Cursor-written release notes, ask Cursor to use the BubbleHub release-notes skill before tagging.
 It writes `.github/releases/<tag>.md` from commits since the previous release, and the release workflow uses that file when present.
@@ -211,7 +211,7 @@ docker build -f docker/Dockerfile --target unit-test -t bubblehub:unit .
 docker run --rm --privileged --security-opt seccomp=unconfined bubblehub:unit
 ```
 
-CI enforces line coverage through [Codecov](https://codecov.io/gh/bublhub/BubbleHub) (45% project target for `libbubblehub` and `bubblehub`). See [CONTRIBUTING.md](CONTRIBUTING.md#coverage) for the local coverage command and HTML report locations.
+CI enforces line coverage through [Codecov](https://codecov.io/gh/bublhub/BubbleHub) (45% project target for `libbubble` and `bubblehub`). See [CONTRIBUTING.md](CONTRIBUTING.md#coverage) for the local coverage command and HTML report locations.
 
 Integration tests also need persistent caches for the model and OpenClaw dependencies. Use Docker named volumes instead of `$PWD` bind mounts, which can fail on remote/NFS workspaces:
 
@@ -250,7 +250,7 @@ Inside the container:
 scripts/ci/write-ci-model-config.sh
 scripts/ci/prepare-openclaw.sh
 mkdir -p /cache/bubblehub/integration-workspaces/dev-playground
-bubblehub shell --allow-network --root-dir /cache/bubblehub/integration-workspaces/dev-playground
+bubble shell --allow-network --root-dir /cache/bubblehub/integration-workspaces/dev-playground
 ```
 
 ## License

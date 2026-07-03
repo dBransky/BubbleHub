@@ -47,10 +47,10 @@ build_deb() {
     -C "$pkg_root/opt" \
     -xf -
   mkdir -p "$pkg_root/opt/bubblehub/rootfs/ubuntu-26.04/dev"
-  for binary in bubblehub bubblehub-node bubblehub-sandbox bubblehub-control-center llama-server; do
+  for binary in bubble bubblehub bubblehub-node bubblehub-sandbox llama-server; do
     docker cp "$DEB_CONTAINER_ID:/usr/local/bin/${binary}" - | tar --no-same-owner --no-same-permissions -C "$pkg_root/usr/bin" -xf -
   done
-  chmod 0755 "$pkg_root/usr/bin"/bubblehub "$pkg_root/usr/bin"/bubblehub-node "$pkg_root/usr/bin"/bubblehub-control-center "$pkg_root/usr/bin"/llama-server
+  chmod 0755 "$pkg_root/usr/bin"/bubble "$pkg_root/usr/bin"/bubblehub "$pkg_root/usr/bin"/bubblehub-node "$pkg_root/usr/bin"/llama-server
   chmod 4755 "$pkg_root/usr/bin/bubblehub-sandbox"
   docker cp "$DEB_CONTAINER_ID:/usr/local/lib/x86_64-linux-gnu/." - | tar --no-same-owner --no-same-permissions -C "$pkg_root/usr/lib/x86_64-linux-gnu" -xf -
   docker rm -f "$DEB_CONTAINER_ID" >/dev/null
@@ -87,19 +87,19 @@ fi
 EOF
   chmod 0755 "$pkg_root/DEBIAN/postrm"
 
-  cat > "$pkg_root/usr/share/applications/bubblehub-control-center.desktop" <<'EOF'
+  cat > "$pkg_root/usr/share/applications/bubblehub.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
-Name=BubbleHub Control Center
+Name=BubbleHub
 Comment=Monitor BubbleHub agents, memory, manifests, and loaded models
-Exec=bubblehub app
-Icon=bubblehub-control-center
+Exec=bubblehub
+Icon=bubblehub
 Terminal=false
 Categories=Development;System;Monitor;
 StartupNotify=true
 EOF
 
-  cp "$pkg_root/opt/bubblehub/share/bubblehub/app/icons/bubblehub-icon.svg" "$pkg_root/usr/share/icons/hicolor/scalable/apps/bubblehub-control-center.svg"
+  cp "$pkg_root/opt/bubblehub/share/bubblehub/app/icons/bubblehub-icon.svg" "$pkg_root/usr/share/icons/hicolor/scalable/apps/bubblehub.svg"
 
   dpkg-deb --root-owner-group --build "$pkg_root" "$OUTPUT_DIR/${PACKAGE_NAME}.deb"
 }
@@ -122,7 +122,7 @@ RequestExecutionLevel user
 ShowInstDetails show
 
 Section "Install BubbleHub"
-  DetailPrint "Installing BubbleHub ${VERSION_TAG} runtime and Control Center through PowerShell and WSL..."
+  DetailPrint "Installing BubbleHub ${VERSION_TAG} runtime and desktop app through PowerShell and WSL..."
   StrCpy \$0 "\$TEMP\\bubblehub-install.ps1"
   FileOpen \$1 "\$0" w
   FileWrite \$1 "\$\$ErrorActionPreference = 'Stop'\$\r\$\n"

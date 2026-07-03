@@ -83,7 +83,7 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
     --mount=type=cache,target=/root/.cargo/git \
     --mount=type=cache,target=/src/app/target \
     ./scripts/ci/build-tauri-app.sh && \
-    install -D app/target/release/bubblehub-control-center /out/bubblehub-control-center
+    install -D app/target/release/bubblehub /out/bubblehub
 
 FROM source AS unit-test
 
@@ -96,12 +96,12 @@ RUN --mount=type=cache,target=/root/.cargo/registry \
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     python3 -m pip install ".[dev]" && \
-    rm -rf libbubblehub/build && \
+    rm -rf libbubble/build && \
     coverage_args="" && \
     if [ "$MESON_COVERAGE" = "true" ]; then coverage_args="-Db_coverage=true"; fi && \
-    meson setup libbubblehub/build libbubblehub --prefix=/usr/local $coverage_args && \
-    meson compile -C libbubblehub/build && \
-    meson install -C libbubblehub/build --no-rebuild && \
+    meson setup libbubble/build libbubble --prefix=/usr/local $coverage_args && \
+    meson compile -C libbubble/build && \
+    meson install -C libbubble/build --no-rebuild && \
     chown root:root /usr/local/bin/bubblehub-sandbox && \
     chmod 4755 /usr/local/bin/bubblehub-sandbox && \
     ldconfig
@@ -117,14 +117,17 @@ RUN SUDO= /src/scripts/create-rootfs.sh
 FROM rootfs AS runtime
 
 COPY . /src
-COPY --from=tauri-app /out/bubblehub-control-center /usr/local/bin/bubblehub-control-center
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    BUBBLEHUB_INSTALL_APP=1 BUBBLEHUB_SKIP_TAURI=1 BUBBLEHUB_SKIP_MODEL_SETUP=1 SUDO= ./scripts/build.sh && \
-    bubblehub --help && \
-    command -v bubblehub-control-center
+    BUBBLEHUB_INSTALL_APP=1 BUBBLEHUB_SKIP_TAURI=1 BUBBLEHUB_SKIP_MODEL_SETUP=1 SUDO= ./scripts/build.sh
 
-CMD ["bubblehub", "--help"]
+COPY --from=tauri-app /out/bubblehub /opt/bubblehub/share/bubblehub/app/bubblehub
+
+RUN bubble --help && \
+    bubblehub --help && \
+    test -x /opt/bubblehub/share/bubblehub/app/bubblehub
+
+CMD ["bubble", "--help"]
 
 FROM runtime AS integration-test
 

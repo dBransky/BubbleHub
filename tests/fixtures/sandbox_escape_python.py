@@ -82,6 +82,7 @@ def run_fs_links() -> None:
 
 def run_protected_paths() -> None:
     fail_if_succeeds("write /etc/passwd", lambda: Path("/etc/passwd").open("a", encoding="utf-8").write("escaped"))
+    fail_if_succeeds("write /usr/local/bin/bubble", lambda: Path("/usr/local/bin/bubble").open("a", encoding="utf-8").write("escaped"))
     fail_if_succeeds("write /usr/local/bin/bubblehub", lambda: Path("/usr/local/bin/bubblehub").open("a", encoding="utf-8").write("escaped"))
     fail_if_succeeds("write /opt/bubblehub", lambda: Path("/opt/bubblehub/.bubblehub-escape").write_text("escaped", encoding="utf-8"))
     fail_if_succeeds("write host /tmp", lambda: Path("/tmp/bubblehub-sandbox-escape-python").write_text("escaped", encoding="utf-8"))

@@ -35,7 +35,7 @@ function Invoke-WslBash {
     }
 }
 
-function New-ControlCenterShortcut {
+function New-BubbleHubShortcut {
     param(
         [Parameter(Mandatory = $true)]
         [object]$Shell,
@@ -51,7 +51,7 @@ function New-ControlCenterShortcut {
     $Shortcut.TargetPath = "powershell.exe"
     $Shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$LauncherScript`""
     $Shortcut.WorkingDirectory = $WorkingDirectory
-    $Shortcut.Description = "Open the BubbleHub Control Center through WSL"
+    $Shortcut.Description = "Open the BubbleHub desktop app through WSL"
     $Shortcut.Save()
 }
 
@@ -68,12 +68,12 @@ function Install-WindowsLaunchers {
     New-Item -ItemType Directory -Force -Path $StartMenuDir | Out-Null
 
     if ($InstallDesktopShortcut) {
-        $LauncherScript = Join-Path $InstallRoot "bubblehub-control-center.ps1"
+        $LauncherScript = Join-Path $InstallRoot "bubblehub.ps1"
         $QuotedWslDistro = ConvertTo-PowerShellSingleQuoted $WslDistroName
         @"
 `$ErrorActionPreference = "Stop"
 `$Port = if (`$env:BUBBLEHUB_APP_PORT) { `$env:BUBBLEHUB_APP_PORT } else { "8010" }
-`$Command = "BUBBLEHUB_WINDOWS_APP=1 bubblehub app --host 127.0.0.1 --port `$Port"
+`$Command = "BUBBLEHUB_WINDOWS_APP=1 bubblehub --host 127.0.0.1 --port `$Port"
 `$WslDistro = $QuotedWslDistro
 if (`$WslDistro) {
     & wsl.exe -d `$WslDistro bash -lc `$Command
@@ -83,36 +83,36 @@ if (`$WslDistro) {
 "@ | Set-Content -Path $LauncherScript -Encoding UTF8
     }
 
-    $CmdLauncher = Join-Path $InstallRoot "bubblehub.cmd"
+    $CmdLauncher = Join-Path $InstallRoot "bubble.cmd"
     if ($WslDistroName) {
         $EscapedDistro = $WslDistroName.Replace('"', '\"')
         @"
 @echo off
-wsl.exe -d "$EscapedDistro" bash -lc "bubblehub %*"
+wsl.exe -d "$EscapedDistro" bash -lc "bubble %*"
 "@ | Set-Content -Path $CmdLauncher -Encoding ASCII
     } else {
         @'
 @echo off
-wsl.exe bash -lc "bubblehub %*"
+wsl.exe bash -lc "bubble %*"
 '@ | Set-Content -Path $CmdLauncher -Encoding ASCII
     }
 
     if ($InstallDesktopShortcut) {
         $Shell = New-Object -ComObject WScript.Shell
         $ShortcutPaths = @(
-            (Join-Path $StartMenuDir "BubbleHub Control Center.lnk"),
-            (Join-Path ([Environment]::GetFolderPath("Desktop")) "BubbleHub Control Center.lnk")
+            (Join-Path $StartMenuDir "BubbleHub.lnk"),
+            (Join-Path ([Environment]::GetFolderPath("Desktop")) "BubbleHub.lnk")
         )
         foreach ($ShortcutPath in $ShortcutPaths) {
-            New-ControlCenterShortcut `
+            New-BubbleHubShortcut `
                 -Shell $Shell `
                 -ShortcutPath $ShortcutPath `
                 -LauncherScript $LauncherScript `
                 -WorkingDirectory $InstallRoot
-            Write-Host "Created BubbleHub Control Center shortcut: $ShortcutPath"
+            Write-Host "Created BubbleHub shortcut: $ShortcutPath"
         }
     } else {
-        Write-Host "Control Center shortcuts skipped. Run 'bubblehub app' inside WSL to install it later."
+        Write-Host "BubbleHub shortcuts skipped. Run 'bubblehub' inside WSL to install it later."
     }
 
     Write-Host "Windows CLI bridge: $CmdLauncher"
@@ -182,7 +182,7 @@ if ($env:OS -eq "Windows_NT") {
     $Command = "tmp=`$(mktemp) && curl -fsSL $QuotedUrl -o `$tmp && ${AptEnv}${SkipModelSetupEnv}${InstallAppEnv}${ReleaseBaseEnv}${AssetNameEnv}BUBBLEHUB_REPO=$QuotedRepo BUBBLEHUB_VERSION=$QuotedVersion bash `$tmp"
     Invoke-WslBash $Command
     if ($LASTEXITCODE -eq 0) {
-        Invoke-WslBash "command -v bubblehub-control-center >/dev/null 2>&1"
+        Invoke-WslBash "test -x /opt/bubblehub/share/bubblehub/app/bubblehub"
         $DesktopInstalled = ($LASTEXITCODE -eq 0)
         Install-WindowsLaunchers -InstallDesktopShortcut:$DesktopInstalled -WslDistroName $WslDistro
     }

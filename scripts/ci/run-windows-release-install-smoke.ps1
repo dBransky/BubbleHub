@@ -148,14 +148,14 @@ function Clear-PreviousInstall {
     $CleanupCommand = @'
 set -e
 rm -rf /opt/bubblehub
-rm -f /usr/local/bin/bubblehub /usr/local/bin/bubblehub-node /usr/local/bin/bubblehub-control-center /usr/local/bin/llama-server
+rm -f /usr/local/bin/bubble /usr/local/bin/bubblehub /usr/local/bin/bubblehub-node /usr/local/bin/llama-server
 rm -f /usr/local/bin/bubblehub-sandbox /usr/local/bin/pytest
 rm -rf /root/.cache/bubblehub /home/*/.cache/bubblehub
 '@
     Invoke-Wsl -Distro $Distro -AsRoot -Command $CleanupCommand
 
-    $Shortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "BubbleHub Control Center.lnk"
-    $StartMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "BubbleHub/BubbleHub Control Center.lnk"
+    $Shortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "BubbleHub.lnk"
+    $StartMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "BubbleHub/BubbleHub.lnk"
     Remove-Item -Force $Shortcut, $StartMenuShortcut -ErrorAction SilentlyContinue
 }
 
@@ -163,7 +163,7 @@ function Stop-BubbleHubApp {
     param([string]$Distro)
 
     if ($Distro) {
-        wsl.exe -d $Distro bash -lc "pkill -f 'bubblehub app' >/dev/null 2>&1 || true; pkill -f bubblehub-control-center >/dev/null 2>&1 || true" 2>$null | Out-Null
+        wsl.exe -d $Distro bash -lc "pkill -f 'bubblehub --host' >/dev/null 2>&1 || true; pkill -f '/opt/bubblehub/share/bubblehub/app/bubblehub' >/dev/null 2>&1 || true" 2>$null | Out-Null
     }
 }
 
@@ -209,16 +209,16 @@ function Assert-InstalledVersion {
     )
 
     $Version = $VersionTag.TrimStart("v")
-    $Output = (& wsl.exe -d $Distro bash -lc "bubblehub --version").Trim()
-    if ($LASTEXITCODE -ne 0 -or $Output -ne "bubblehub $Version") {
-        throw "Expected 'bubblehub $Version' from WSL, got '$Output'."
+    $Output = (& wsl.exe -d $Distro bash -lc "bubble --version").Trim()
+    if ($LASTEXITCODE -ne 0 -or $Output -ne "bubble $Version") {
+        throw "Expected 'bubble $Version' from WSL, got '$Output'."
     }
 
-    Invoke-Wsl -Distro $Distro -Command "command -v bubblehub-control-center >/dev/null"
+    Invoke-Wsl -Distro $Distro -Command "test -x /opt/bubblehub/share/bubblehub/app/bubblehub"
 
-    $Shortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "BubbleHub Control Center.lnk"
+    $Shortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "BubbleHub.lnk"
     if (-not (Test-Path $Shortcut)) {
-        throw "Expected BubbleHub Control Center desktop shortcut at $Shortcut."
+        throw "Expected BubbleHub desktop shortcut at $Shortcut."
     }
 }
 
@@ -229,7 +229,7 @@ function Assert-DesktopLaunch {
     )
 
     $Version = $VersionTag.TrimStart("v")
-    $ShortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "BubbleHub Control Center.lnk"
+    $ShortcutPath = Join-Path ([Environment]::GetFolderPath("Desktop")) "BubbleHub.lnk"
     $Shell = New-Object -ComObject WScript.Shell
     $Shortcut = $Shell.CreateShortcut($ShortcutPath)
 
@@ -239,7 +239,7 @@ function Assert-DesktopLaunch {
         for ($i = 0; $i -lt 60; $i++) {
             try {
                 $Health = Invoke-RestMethod -Uri "http://127.0.0.1:8010/health"
-                if ($Health.service -eq "bubblehub-control-center" -and $Health.version -eq $Version) {
+                if ($Health.service -eq "bubblehub" -and $Health.version -eq $Version) {
                     return
                 }
             } catch {

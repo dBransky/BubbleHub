@@ -382,6 +382,7 @@ static void run_fs_links(const char *workspace, const char *host_canary) {
 
 static void run_protected_writes(void) {
     record_if_success("syscall write /etc/passwd", write_file("/etc/passwd"));
+    record_if_success("syscall write /usr/local/bin/bubble", write_file("/usr/local/bin/bubble"));
     record_if_success("syscall write /usr/local/bin/bubblehub", write_file("/usr/local/bin/bubblehub"));
     record_if_success("syscall write /opt/bubblehub", create_file("/opt/bubblehub/.bubblehub-escape-c"));
     record_if_success("syscall write host /tmp", create_file("/tmp/bubblehub-sandbox-escape-c"));

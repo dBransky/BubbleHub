@@ -79,30 +79,31 @@ run_container() {
           local version="${version_tag#v}"
           local actual_version
           local health="/tmp/bubblehub-health.json"
-          local log="/tmp/bubblehub-app.log"
+          local log="/tmp/bubblehub.log"
           local specialties="/tmp/bubblehub-specialties.txt"
           local app_pid=""
 
+          command -v bubble >/dev/null
           command -v bubblehub >/dev/null
           command -v bubblehub-node >/dev/null
           command -v bubblehub-sandbox >/dev/null
-          echo "--- validating BubbleHub CLI ${version} (${install_method}) ---"
-          actual_version="$(bubblehub --version)"
+          echo "--- validating Bubble CLI ${version} (${install_method}) ---"
+          actual_version="$(bubble --version)"
           echo "$actual_version"
-          test "$actual_version" = "bubblehub ${version}"
-          bubblehub --help >/dev/null
-          bubblehub specialties list | tee "$specialties"
+          test "$actual_version" = "bubble ${version}"
+          bubble --help >/dev/null
+          bubble specialties list | tee "$specialties"
           grep -q "^default-instruct" "$specialties"
 
           if [[ "$install_method" == "apt" ]]; then
             test "$(dpkg-query -W -f=\${Version} bubblehub)" = "$version"
-            command -v bubblehub-control-center >/dev/null
             command -v llama-server >/dev/null
-            test -f /usr/share/applications/bubblehub-control-center.desktop
-            test -f /usr/share/icons/hicolor/scalable/apps/bubblehub-control-center.svg
+            test -x /opt/bubblehub/share/bubblehub/app/bubblehub
+            test -f /usr/share/applications/bubblehub.desktop
+            test -f /usr/share/icons/hicolor/scalable/apps/bubblehub.svg
           fi
 
-          bubblehub app --server-only --port 18010 >"$log" 2>&1 &
+          bubblehub --server-only --port 18010 >"$log" 2>&1 &
           app_pid="$!"
           for _ in $(seq 1 30); do
             if curl -fsSL http://127.0.0.1:18010/health >"$health" 2>/dev/null; then
@@ -114,7 +115,7 @@ run_container() {
             cat "$log" >&2 || true
             exit 1
           fi
-          grep -q "\"service\": \"bubblehub-control-center\"" "$health"
+          grep -q "\"service\": \"bubblehub\"" "$health"
           grep -q "\"version\": \"${version}\"" "$health"
           kill "$app_pid" >/dev/null 2>&1 || true
           wait "$app_pid" >/dev/null 2>&1 || true
@@ -148,30 +149,31 @@ run_container() {
           local version="${version_tag#v}"
           local actual_version
           local health="/tmp/bubblehub-health.json"
-          local log="/tmp/bubblehub-app.log"
+          local log="/tmp/bubblehub.log"
           local specialties="/tmp/bubblehub-specialties.txt"
           local app_pid=""
 
+          command -v bubble >/dev/null
           command -v bubblehub >/dev/null
           command -v bubblehub-node >/dev/null
           command -v bubblehub-sandbox >/dev/null
-          echo "--- validating BubbleHub CLI ${version} (${install_method}) ---"
-          actual_version="$(bubblehub --version)"
+          echo "--- validating Bubble CLI ${version} (${install_method}) ---"
+          actual_version="$(bubble --version)"
           echo "$actual_version"
-          test "$actual_version" = "bubblehub ${version}"
-          bubblehub --help >/dev/null
-          bubblehub specialties list | tee "$specialties"
+          test "$actual_version" = "bubble ${version}"
+          bubble --help >/dev/null
+          bubble specialties list | tee "$specialties"
           grep -q "^default-instruct" "$specialties"
 
           if [[ "$install_method" == "apt" ]]; then
             test "$(dpkg-query -W -f=\${Version} bubblehub)" = "$version"
-            command -v bubblehub-control-center >/dev/null
             command -v llama-server >/dev/null
-            test -f /usr/share/applications/bubblehub-control-center.desktop
-            test -f /usr/share/icons/hicolor/scalable/apps/bubblehub-control-center.svg
+            test -x /opt/bubblehub/share/bubblehub/app/bubblehub
+            test -f /usr/share/applications/bubblehub.desktop
+            test -f /usr/share/icons/hicolor/scalable/apps/bubblehub.svg
           fi
 
-          bubblehub app --server-only --port 18010 >"$log" 2>&1 &
+          bubblehub --server-only --port 18010 >"$log" 2>&1 &
           app_pid="$!"
           for _ in $(seq 1 30); do
             if curl -fsSL http://127.0.0.1:18010/health >"$health" 2>/dev/null; then
@@ -183,7 +185,7 @@ run_container() {
             cat "$log" >&2 || true
             exit 1
           fi
-          grep -q "\"service\": \"bubblehub-control-center\"" "$health"
+          grep -q "\"service\": \"bubblehub\"" "$health"
           grep -q "\"version\": \"${version}\"" "$health"
           kill "$app_pid" >/dev/null 2>&1 || true
           wait "$app_pid" >/dev/null 2>&1 || true

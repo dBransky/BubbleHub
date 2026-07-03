@@ -42,7 +42,7 @@ body:
         - Sandbox / security
         - Docker / containerisation
         - CLI / tooling
-        - Python API / libbubblehub
+        - Python API / libbubble
         - Documentation
         - CI / testing
         - Other

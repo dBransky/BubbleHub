@@ -25,7 +25,7 @@ def control_snapshot(client: SchedulerClient | None = None) -> dict[str, object]
     agents.extend(known_agent_records({str(item.get("agent_id", "")) for item in agents}))
 
     return {
-        "service": "bubblehub-control-center",
+        "service": "bubblehub",
         "generated_at": time.time(),
         "hardware": hardware,
         "limits": limits,
@@ -206,7 +206,7 @@ def _telemetry_warnings(hardware: dict[str, object]) -> list[str]:
     warnings: list[str] = []
     if _int_or_zero(hardware.get("vram_bytes")) <= 0:
         warnings.append("No dedicated VRAM telemetry is available; model GPU usage falls back to reservations.")
-    warnings.append("Agent resource metrics use the host bubblehub run process until sandbox child telemetry is available.")
+    warnings.append("Agent resource metrics use the host bubble run process until sandbox child telemetry is available.")
     return warnings
 
 

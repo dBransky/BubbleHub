@@ -40,7 +40,7 @@ copy_source() {
     --exclude='.bubblehub-cache' \
     --exclude='.openclaw-cache' \
     --exclude='app/target' \
-    --exclude='libbubblehub/build' \
+    --exclude='libbubble/build' \
     -C "$ROOT" -cf - . | tar -C "$dst" -xf -
 }
 
@@ -115,7 +115,7 @@ write_source_tarball() {
       --exclude='.bubblehub-cache' \
       --exclude='.openclaw-cache' \
       --exclude='app/target' \
-      --exclude='libbubblehub/build' \
+      --exclude='libbubble/build' \
       --transform "s#^\./#bubblehub-${version_tag}/#" \
       -czf "$assets_dir/bubblehub-source.tar.gz" .
   )

@@ -324,12 +324,13 @@ static int setup_bubblehub_runtime_binds(const char *new_root) {
     }
 
     const char *files[] = {
+        "/usr/bin/bubble",
         "/usr/bin/bubblehub",
         "/usr/bin/bubblehub-node",
         "/usr/bin/bubblehub-sandbox",
         "/usr/bin/llama-server",
-        "/usr/lib/libbubblehub.so",
-        "/usr/lib/x86_64-linux-gnu/libbubblehub.so",
+        "/usr/lib/libbubble.so",
+        "/usr/lib/x86_64-linux-gnu/libbubble.so",
     };
     for (size_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
         char target[PATH_MAX];

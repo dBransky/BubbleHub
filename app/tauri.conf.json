@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "BubbleHub Control Center",
+  "productName": "BubbleHub",
   "version": "0.1.0",
   "identifier": "com.bubblehub.controlcenter",
   "build": {
@@ -17,6 +17,6 @@
     "targets": "all",
     "category": "DeveloperTool",
     "shortDescription": "Monitor BubbleHub agents, resources, and models",
-    "longDescription": "BubbleHub Control Center is a desktop app for monitoring running agents, RAM and VRAM usage, manifests, and local models."
+    "longDescription": "BubbleHub is a desktop app for monitoring running agents, RAM and VRAM usage, manifests, and local models."
   }
 }

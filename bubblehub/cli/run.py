@@ -179,7 +179,7 @@ def run_agent(
     try:
         if platform.system() != "Linux" and not unsafe_no_sandbox:
             log_error("sandbox unavailable on platform", platform.system())
-            raise typer.BadParameter("bubblehub run sandbox is Linux-only; use --unsafe-no-sandbox for local development")
+            raise typer.BadParameter("bubble run sandbox is Linux-only; use --unsafe-no-sandbox for local development")
         if unsafe_no_sandbox:
             log_info("running without sandbox", str(resolved_binary))
             raise typer.Exit(subprocess.call(host_args, cwd=sandbox_paths.host_workdir, env=env))
@@ -712,10 +712,10 @@ def _validate_writable_root(root: Path) -> None:
         or _is_relative_to(source_root, root)
         or (_is_relative_to(root, source_root) and not _is_allowed_source_workspace(root, source_root))
     ):
-        raise typer.BadParameter("--root-dir cannot include the BubbleHub application source tree")
+        raise typer.BadParameter("--root-dir cannot include the desktop source tree")
     source_tree = _bubblehub_source_tree_for(root)
     if source_tree is not None and not _is_allowed_source_workspace(root, source_tree):
-        raise typer.BadParameter("--root-dir cannot be inside the BubbleHub application source tree")
+        raise typer.BadParameter("--root-dir cannot be inside the desktop source tree")
 
 
 def _source_checkout_root() -> Path | None:
@@ -730,7 +730,7 @@ def _bubblehub_source_tree_for(root: Path) -> Path | None:
         if (
             (candidate / "pyproject.toml").exists()
             and (candidate / "bubblehub" / "cli" / "run.py").exists()
-            and (candidate / "libbubblehub" / "sandbox.c").exists()
+            and (candidate / "libbubble" / "sandbox.c").exists()
         ):
             return candidate
     return None

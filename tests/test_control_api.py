@@ -22,7 +22,7 @@ def test_control_api_serves_health_and_telemetry() -> None:
         server.server_close()
 
     assert health.status_code == 200
-    assert health.json()["service"] == "bubblehub-control-center"
+    assert health.json()["service"] == "bubblehub"
     assert telemetry.status_code == 200
     assert telemetry.json()["agents"][0]["agent_id"] == "agt-test"
     client.telemetry_snapshot.assert_called()

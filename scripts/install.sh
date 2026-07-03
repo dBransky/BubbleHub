@@ -49,10 +49,10 @@ BUBBLEHUB_INSTALL_APP="$(bubblehub_resolve_desktop_app_choice)"
 export BUBBLEHUB_INSTALL_APP
 if [[ "$BUBBLEHUB_INSTALL_APP" == "1" ]]; then
   export BUBBLEHUB_SKIP_TAURI=0
-  echo "Desktop app selected: BubbleHub Control Center will be installed."
+  echo "Desktop app selected: BubbleHub will be installed."
 else
   export BUBBLEHUB_SKIP_TAURI=1
-  echo "CLI-only install selected. You can install the desktop app later with: bubblehub app"
+  echo "CLI-only install selected. You can install the desktop app later with: bubblehub"
 fi
 if [[ "${BUBBLEHUB_SKIP_DEPS:-0}" != "1" ]]; then
   ./scripts/install-deps.sh
@@ -60,4 +60,5 @@ fi
 ./scripts/build.sh
 
 echo
-echo "BubbleHub installed. Try: bubblehub --help"
+echo "BubbleHub installed. Try: bubble --help"
+echo "Open the app with: bubblehub"

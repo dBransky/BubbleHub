@@ -39,7 +39,7 @@ bubblehub_render_choice_options() {
   local selected="$1"
   local rewind="${2:-0}"
   local labels=(
-    "Install BubbleHub Control Center desktop app"
+    "Install BubbleHub desktop app"
     "Use built-in CLI commands only"
     "Configure install options"
   )
@@ -69,7 +69,7 @@ bubblehub_prompt_desktop_app_install() {
 BubbleHub installer
 We noticed you are using CLI install.
 Do you want to install the desktop app as well?
-You can always install it later by running: bubblehub app
+You can always install it later by running: bubblehub
 
 Use Up/Down arrows and press Enter.
 EOF
@@ -153,10 +153,10 @@ bubblehub_run_base_model_setup() {
   if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
     return 0
   fi
-  if ! command -v bubblehub >/dev/null 2>&1; then
+  if ! command -v bubble >/dev/null 2>&1; then
     return 0
   fi
   echo
   echo "Choose your default base model for BubbleHub."
-  bubblehub models setup </dev/tty >/dev/tty 2>&1 || true
+  bubble models setup </dev/tty >/dev/tty 2>&1 || true
 }

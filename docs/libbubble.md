@@ -1,6 +1,6 @@
-# libbubblehub Architecture
+# libbubble Architecture
 
-`libbubblehub` is the native runtime for BubbleHub scheduling, sandboxing, and local model hosting. It owns backend process lifecycle, warm-model cache state, admission decisions, scheduler state, and sandbox enforcement.
+`libbubble` is the native runtime for BubbleHub scheduling, sandboxing, and local model hosting. It owns backend process lifecycle, warm-model cache state, admission decisions, scheduler state, and sandbox enforcement.
 
 ## Architecture
 
@@ -14,9 +14,9 @@ Call flow for model hosting:
 
 1. A caller passes a JSON request containing specialty, selected model metadata, model path, messages, niceness, and token limits.
 2. `bubblehub_inference_chat_json()` parses the request and checks the shared scheduler state.
-3. If a healthy warm model exists, `libbubblehub` increments the model refcount and reuses its pid/port.
-4. If no healthy model exists, `libbubblehub` admits the job and starts the configured native backend process.
-5. `libbubblehub` sends the OpenAI-shaped chat request to the backend and returns JSON to the caller.
+3. If a healthy warm model exists, `libbubble` increments the model refcount and reuses its pid/port.
+4. If no healthy model exists, `libbubble` admits the job and starts the configured native backend process.
+5. `libbubble` sends the OpenAI-shaped chat request to the backend and returns JSON to the caller.
 6. The model refcount is released, but the model process stays warm until explicit eviction or scheduler pressure removes it.
 
 Sandboxed agents receive an inference-only loopback path to the host BubbleHub endpoint. Python code running inside the sandbox must use that forwarded endpoint instead of loading the native shared library directly.
@@ -36,7 +36,7 @@ Hardening is enforced by the native sandbox runtime.
 
 ## LLM Hosting Policy
 
-`libbubblehub` decides whether a model is loaded, reused, evicted, or started.
+`libbubble` decides whether a model is loaded, reused, evicted, or started.
 
 - Backend health validation, pid/port stability, refcount updates, and scheduler model records are native responsibilities.
 - LLM hosting remains backend-agnostic at the API boundary: callers pass model metadata, while native code chooses the backend start path based on the model backend field.
@@ -46,31 +46,31 @@ Hardening is enforced by the native sandbox runtime.
 
 ## File Responsibilities
 
-### `libbubblehub/meson.build`
+### `libbubble/meson.build`
 
 Build definition for the native shared library and sandbox executable. Add new native source files here when responsibilities are split out of large C modules.
 
-### `libbubblehub/hw_detect.c`
+### `libbubble/hw_detect.c`
 
 Detects host RAM, VRAM, free VRAM, and GPU characteristics for scheduler and model selection. This informs admission policy but does not start models.
 
-### `libbubblehub/include/bubblehub/hw.h`
+### `libbubble/include/bubblehub/hw.h`
 
 Public C declarations for hardware detection functions exported by the shared library.
 
-### `libbubblehub/limits.c`
+### `libbubble/limits.c`
 
 Native helpers for resource limit handling. Keep low-level limit parsing or enforcement helpers here when they are shared outside the sandbox implementation.
 
-### `libbubblehub/include/bubblehub/limits.h`
+### `libbubble/include/bubblehub/limits.h`
 
 Public declarations for native limit helpers.
 
-### `libbubblehub/landlock.c`
+### `libbubble/landlock.c`
 
 Linux Landlock setup and filesystem access restriction helpers. This file is part of the sandbox hardening boundary and should fail closed if rules cannot be applied safely.
 
-### `libbubblehub/sandbox.c`
+### `libbubble/sandbox.c`
 
 Native sandbox runtime. It sets up the agent execution environment, persistent home/workspace mapping, user identity, clean environment variables, writable paths, network policy, resource limits, and the final exec.
 
@@ -81,15 +81,15 @@ Hardening policy for this file:
 - Reject unsafe persistent paths and symlink escapes.
 - Keep inference-only networking separate from explicit general outbound networking.
 
-### `libbubblehub/overfs.c`
+### `libbubble/overfs.c`
 
 Overlay and mount setup for sandbox filesystems. It mounts the Ubuntu rootfs lowerdir with the per-agent overlay upper/work directories, binds the workspace and BubbleHub runtime paths, prepares `/dev`, `/proc`, `/tmp`, and other filesystem views, and logs mount decisions for debugging.
 
-### `libbubblehub/include/bubblehub/sandbox.h`
+### `libbubble/include/bubblehub/sandbox.h`
 
 Public sandbox configuration struct and `bubblehub_sandbox_run()` declaration. Native code interprets the requested policy and enforces the sandbox.
 
-### `libbubblehub/scheduler.c`
+### `libbubble/scheduler.c`
 
 Shared scheduler state and native inference core. It manages state file locking, agents, resource limits, queue entries, model records, model admission, model eviction, warm-model lookup, backend process spawning, backend health checks, chat forwarding, and JSON snapshots.
 
@@ -102,24 +102,24 @@ LLM hosting policy for this file:
 - Evict unhealthy backend records before starting a replacement.
 - Start supported backends natively, including `llama-server` and vLLM.
 
-### `libbubblehub/include/bubblehub/scheduler.h`
+### `libbubble/include/bubblehub/scheduler.h`
 
 Public scheduler and inference API. This is the native ABI for language bindings, command wrappers, and service processes. New inference operations should be added here as native JSON-in/JSON-out APIs.
 
-### `libbubblehub/bubblehub_sandbox_main.c`
+### `libbubble/bubblehub_sandbox_main.c`
 
 Small executable entrypoint for running the native sandbox from a process boundary. Keep policy in `sandbox.c`; this file should stay a thin command wrapper.
 
 ## Native Unit Tests
 
-C unit tests live under `libbubblehub/tests/`. Each module has a dedicated test binary that links against the built `libbubblehub.so` rather than recompiling library sources.
+C unit tests live under `libbubble/tests/`. Each module has a dedicated test binary that links against the built `libbubble.so` rather than recompiling library sources.
 
 Run them with Meson:
 
 ```bash
-meson setup libbubblehub/build libbubblehub --prefix=/usr/local
-meson compile -C libbubblehub/build
-meson test -C libbubblehub/build --print-errorlogs
+meson setup libbubble/build libbubble --prefix=/usr/local
+meson compile -C libbubble/build
+meson test -C libbubble/build --print-errorlogs
 ```
 
 Current coverage includes access policy, HTTP proxy, logging, hardware detection, cgroup limits, overlay/mount helpers, Landlock, scheduler state, and sandbox config validation. Full sandbox execution and the `bubblehub-sandbox` CLI wrapper are covered by Python integration tests under `tests/`.

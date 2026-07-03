@@ -9,8 +9,8 @@ htmlcov/
 *.egg-info/
 build/
 dist/
-libbubblehub/build/
-libbubblehub/.cache/
+libbubble/build/
+libbubble/.cache/
 .bubblehub/
 examples/openclaw/openclaw/
 .ci-artifacts/

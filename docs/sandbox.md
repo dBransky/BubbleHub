@@ -1,6 +1,6 @@
 # Sandbox Architecture
 
-The BubbleHub sandbox is a Linux-only native sandbox for running agent binaries with restricted filesystem, user, resource, and network access. It is implemented in `libbubblehub`, with Python acting as the control plane that resolves CLI options and calls the native sandbox helper.
+The BubbleHub sandbox is a Linux-only native sandbox for running agent binaries with restricted filesystem, user, resource, and network access. It is implemented in `libbubble`, with Python acting as the control plane that resolves CLI options and calls the native sandbox helper.
 
 This document is intentionally engineering-facing. It describes the exact execution flow and is explicit about what the sandbox does not yet protect.
 
@@ -14,11 +14,11 @@ It is not a complete VM boundary. Treat it as a host-process sandbox built from 
 
 The normal CLI flow is:
 
-1. `bubblehub run` or `bubblehub shell` enters Python CLI code in `bubblehub/cli/run.py` or `bubblehub/cli/shell.py`.
+1. `bubble run` or `bubble shell` enters Python CLI code in `bubblehub/cli/run.py` or `bubblehub/cli/shell.py`.
 2. Python resolves the requested binary, workspace, optional rootfs, persistent agent id, overlay paths, and inference environment.
 3. Python calls `NativeScheduler.run_sandbox()` in `bubblehub/native.py`.
 4. `NativeScheduler.run_sandbox()` executes the installed native helper, normally `bubblehub-sandbox`.
-5. `bubblehub-sandbox` parses flags in `libbubblehub/bubblehub_sandbox_main.c` and calls `bubblehub_sandbox_run()` in `libbubblehub/sandbox.c`.
+5. `bubblehub-sandbox` parses flags in `libbubble/bubblehub_sandbox_main.c` and calls `bubblehub_sandbox_run()` in `libbubble/sandbox.c`.
 
 The important detail is step 4: sandbox setup runs through the native helper process, not inside the Python process through `ctypes`. On hosts with `kernel.apparmor_restrict_unprivileged_userns=1`, an ordinary Python process can create a user namespace but may not receive the capabilities needed to finish mount and network namespace setup. The installed helper is therefore root-owned setuid and is expected to be installed by `scripts/build.sh`.
 
@@ -33,7 +33,7 @@ mode: 4755
 
 That is not decorative. It is required on hardened Ubuntu/AppArmor hosts where unprivileged user namespaces are restricted. Without the helper privileges, sandbox setup can fail at UID/GID mapping or at later namespace/mount setup with `EPERM`.
 
-The helper should stay small. Policy belongs in `libbubblehub/sandbox.c`; `bubblehub_sandbox_main.c` should remain a thin argument parser and native entrypoint.
+The helper should stay small. Policy belongs in `libbubble/sandbox.c`; `bubblehub_sandbox_main.c` should remain a thin argument parser and native entrypoint.
 
 ## Execution Flow
 
@@ -90,11 +90,11 @@ When `isolate_network=1`:
 - Loopback is brought up.
 - The sandbox may receive a loopback inference endpoint that forwards to the host BubbleHub inference service.
 - General outbound network access should fail because there is no external interface in the namespace.
-- HTTP clients are pointed at a loopback policy proxy on `127.0.0.1:18080`. The listener runs in the sandbox network namespace, but accepted client sockets are passed to a host-side `libbubblehub` proxy process. That host process evaluates the persistent access manifest before either returning `403` or forwarding the request upstream.
+- HTTP clients are pointed at a loopback policy proxy on `127.0.0.1:18080`. The listener runs in the sandbox network namespace, but accepted client sockets are passed to a host-side `libbubble` proxy process. That host process evaluates the persistent access manifest before either returning `403` or forwarding the request upstream.
 
 ## Access Manifests
 
-Per-sandbox network policy is stored by `libbubblehub`, not Python. The default manifest path is:
+Per-sandbox network policy is stored by `libbubble`, not Python. The default manifest path is:
 
 ```text
 ~/.local/state/bubblehub/sandboxes/<agent-id>/access-manifest.json
@@ -108,7 +108,7 @@ Valid policies are:
 - `never`: return `403` for matching requests.
 - `ask`: prompt again when an interactive host is available. In the interactive shell prompt this approves the current request, then asks again next time. If no prompt is possible, BubbleHub records pending and denies the current request.
 
-Unknown, missing, malformed, or timed-out policy decisions are fail-closed. If `bubblehub run` or `bubblehub shell` is attached to a real terminal, the host CLI pauses the sandboxed agent and asks for a policy decision. If no interactive prompt is possible, the native proxy records the request as pending and returns `403` with a dashboard hint rather than allowing traffic or hanging the agent. `bubblehub dashboard` lists pending requests through exported `libbubblehub` APIs and submits host decisions back to native code; for HTTP requests, dashboard decisions are host-scoped so an approved HTTP request also covers a later HTTPS `CONNECT` to the same host. `bubblehub manifest --root-dir <dir>` and `bubblehub manifest --agent-id <agent>` inspect and edit persisted policies. Python does not parse or edit manifest JSON directly.
+Unknown, missing, malformed, or timed-out policy decisions are fail-closed. If `bubble run` or `bubble shell` is attached to a real terminal, the host CLI pauses the sandboxed agent and asks for a policy decision. If no interactive prompt is possible, the native proxy records the request as pending and returns `403` with a dashboard hint rather than allowing traffic or hanging the agent. `bubble dashboard` lists pending requests through exported `libbubble` APIs and submits host decisions back to native code; for HTTP requests, dashboard decisions are host-scoped so an approved HTTP request also covers a later HTTPS `CONNECT` to the same host. `bubble manifest --root-dir <dir>` and `bubble manifest --agent-id <agent>` inspect and edit persisted policies. Python does not parse or edit manifest JSON directly.
 
 When `allow_network` is requested:
 
@@ -167,8 +167,8 @@ However, the sandbox should not yet be treated like a VM, microVM, or browser-gr
 ## Engineering Rules
 
 - Do not add Python fallbacks that run an agent outside the native sandbox when sandbox setup fails.
-- Keep filesystem and namespace enforcement in `libbubblehub`, not Python.
-- Keep access manifest storage, matching, and pending request updates in `libbubblehub`; Python may render prompts or dashboard UI, but must apply decisions through native APIs.
+- Keep filesystem and namespace enforcement in `libbubble`, not Python.
+- Keep access manifest storage, matching, and pending request updates in `libbubble`; Python may render prompts or dashboard UI, but must apply decisions through native APIs.
 - Keep `bubblehub-sandbox` as a thin helper and make `sandbox.c` own policy.
 - Treat every new host path bind or Landlock allow rule as a security-sensitive change.
 - If a setup step cannot be completed, return an error. Do not degrade silently.

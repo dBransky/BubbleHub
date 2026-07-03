@@ -35,7 +35,7 @@ class Admission:
     reason: str = ""
 
 
-class LibBubbleHubError(RuntimeError):
+class LibBubbleError(RuntimeError):
     pass
 
 
@@ -75,34 +75,34 @@ BUBBLEHUB_AGENT_UID_END = 64000
 
 
 def sync_log_config(level: str, log_file: str | None = None) -> None:
-    """Push the current Python log settings into libbubblehub."""
+    """Push the current Python log settings into libbubble."""
 
     try:
-        lib = _load_libbubblehub()
+        lib = _load_libbubble()
         lib.bubblehub_log_set_level.argtypes = [ctypes.c_char_p]
         lib.bubblehub_log_set_level.restype = None
         lib.bubblehub_log_set_level(_bytes(level))
         lib.bubblehub_log_set_file.argtypes = [ctypes.c_char_p]
         lib.bubblehub_log_set_file.restype = None
         lib.bubblehub_log_set_file(_bytes(log_file))
-    except (LibBubbleHubError, AttributeError):
+    except (LibBubbleError, AttributeError):
         return
 
 
 def sync_log_level(level: str) -> None:
-    """Push the current Python log level into libbubblehub."""
+    """Push the current Python log level into libbubble."""
 
     sync_log_config(level, os.environ.get("BUBBLEHUB_LOG_FILE"))
 
 
-def _load_libbubblehub() -> ctypes.CDLL:
+def _load_libbubble() -> ctypes.CDLL:
     candidates = [
-        Path(__file__).resolve().parent / "libbubblehub.so",
-        Path(__file__).resolve().parent.parent / "libbubblehub" / "build" / "libbubblehub.so",
-        Path("/usr/lib/libbubblehub.so"),
-        Path("/usr/lib/x86_64-linux-gnu/libbubblehub.so"),
-        Path("/usr/local/lib/libbubblehub.so"),
-        Path("/usr/local/lib/x86_64-linux-gnu/libbubblehub.so"),
+        Path(__file__).resolve().parent / "libbubble.so",
+        Path(__file__).resolve().parent.parent / "libbubble" / "build" / "libbubble.so",
+        Path("/usr/lib/libbubble.so"),
+        Path("/usr/lib/x86_64-linux-gnu/libbubble.so"),
+        Path("/usr/local/lib/libbubble.so"),
+        Path("/usr/local/lib/x86_64-linux-gnu/libbubble.so"),
     ]
     errors: list[str] = []
     for path in candidates:
@@ -112,8 +112,8 @@ def _load_libbubblehub() -> ctypes.CDLL:
             except OSError as exc:
                 errors.append(f"{path}: {exc}")
     detail = "; ".join(errors) if errors else "no candidate library path exists"
-    raise LibBubbleHubError(
-        f"libbubblehub.so is required but could not be loaded. Run ./scripts/build.sh or install the BubbleHub native package. Details: {detail}"
+    raise LibBubbleError(
+        f"libbubble.so is required but could not be loaded. Run ./scripts/build.sh or install the BubbleHub native package. Details: {detail}"
     )
 
 
@@ -127,7 +127,7 @@ def _sandbox_helper() -> str:
     default = Path("/usr/local/bin/bubblehub-sandbox")
     if default.is_file() and os.access(default, os.X_OK):
         return str(default)
-    raise LibBubbleHubError("bubblehub-sandbox helper is required for sandbox execution. Run ./scripts/build.sh.")
+    raise LibBubbleError("bubblehub-sandbox helper is required for sandbox execution. Run ./scripts/build.sh.")
 
 
 def _bytes(value: str | None) -> bytes | None:
@@ -180,7 +180,7 @@ def _run_with_access_broker(command: list[str], access_broker: AccessBroker) -> 
 def detect_hardware() -> HardwareInfo:
     """Return host RAM/VRAM from the required native BubbleHub library."""
 
-    lib = _load_libbubblehub()
+    lib = _load_libbubble()
     try:
         lib.bubblehub_hw_total_ram_bytes.restype = ctypes.c_uint64
         lib.bubblehub_hw_vram_bytes.restype = ctypes.c_uint64
@@ -199,7 +199,7 @@ def detect_hardware() -> HardwareInfo:
             gpu_device=str(gpu_profile["gpu_device"]),
         )
     except AttributeError as exc:
-        raise LibBubbleHubError("libbubblehub.so is missing required hardware detection symbols") from exc
+        raise LibBubbleError("libbubble.so is missing required hardware detection symbols") from exc
 
 
 def _native_free_vram_bytes(lib: ctypes.CDLL) -> int:
@@ -451,7 +451,7 @@ def _has_sandbox_user_namespace() -> bool:
 
 class NativeScheduler:
     def __init__(self, lib: ctypes.CDLL | None = None) -> None:
-        self.lib = lib if lib is not None else _load_libbubblehub()
+        self.lib = lib if lib is not None else _load_libbubble()
         self._configure()
 
     def admit_model_job(
@@ -481,7 +481,7 @@ class NativeScheduler:
             from bubblehub.log import log_error
 
             log_error("native scheduler admission failed")
-            raise LibBubbleHubError("native scheduler admission failed")
+            raise LibBubbleError("native scheduler admission failed")
         return Admission(
             allowed=bool(allowed.value),
             state=state.value.decode("utf-8"),
@@ -494,7 +494,7 @@ class NativeScheduler:
             float(vram_limit_gb or 0),
         )
         if int(result) != 0:
-            raise LibBubbleHubError("native scheduler failed to configure resource limits")
+            raise LibBubbleError("native scheduler failed to configure resource limits")
 
     def register_agent(
         self,
@@ -512,12 +512,12 @@ class NativeScheduler:
             _bytes(specialty),
         )
         if int(result) != 0:
-            raise LibBubbleHubError("native scheduler failed to register agent")
+            raise LibBubbleError("native scheduler failed to register agent")
 
     def deregister_agent(self, agent_id: str) -> None:
         result = self.lib.bubblehub_scheduler_deregister_agent(_bytes(agent_id))  # type: ignore[union-attr]
         if int(result) != 0:
-            raise LibBubbleHubError("native scheduler failed to deregister agent")
+            raise LibBubbleError("native scheduler failed to deregister agent")
 
     def mark_model_loaded(
         self,
@@ -539,17 +539,17 @@ class NativeScheduler:
             int(port),
         )
         if int(result) != 0:
-            raise LibBubbleHubError("native scheduler failed to mark model loaded")
+            raise LibBubbleError("native scheduler failed to mark model loaded")
 
     def mark_model_unloaded(self, name: str) -> None:
         result = self.lib.bubblehub_scheduler_mark_model_unloaded(_bytes(name))  # type: ignore[union-attr]
         if int(result) != 0:
-            raise LibBubbleHubError("native scheduler failed to mark model unloaded")
+            raise LibBubbleError("native scheduler failed to mark model unloaded")
 
     def evict_model(self, name: str) -> None:
         result = self.lib.bubblehub_scheduler_evict_model(_bytes(name))  # type: ignore[union-attr]
         if int(result) != 0:
-            raise LibBubbleHubError("native scheduler failed to evict model")
+            raise LibBubbleError("native scheduler failed to evict model")
 
     def add_queue_item(
         self,
@@ -569,17 +569,17 @@ class NativeScheduler:
             _bytes(reason),
         )
         if int(result) != 0:
-            raise LibBubbleHubError("native scheduler failed to add queue item")
+            raise LibBubbleError("native scheduler failed to add queue item")
 
     def snapshot(self) -> dict[str, object]:
         pointer = self.lib.bubblehub_scheduler_snapshot_json()  # type: ignore[union-attr]
         if not pointer:
-            raise LibBubbleHubError("native scheduler failed to build snapshot")
+            raise LibBubbleError("native scheduler failed to build snapshot")
         try:
             raw = ctypes.string_at(pointer).decode("utf-8")
             data = json.loads(raw)
             if not isinstance(data, dict):
-                raise LibBubbleHubError("native scheduler returned a non-object snapshot")
+                raise LibBubbleError("native scheduler returned a non-object snapshot")
             return data
         finally:
             self.lib.bubblehub_scheduler_free_string(pointer)  # type: ignore[union-attr]
@@ -587,14 +587,14 @@ class NativeScheduler:
     def inference_chat(self, request: dict[str, object]) -> dict[str, object]:
         pointer = self.lib.bubblehub_inference_chat_json(json.dumps(request).encode("utf-8"))  # type: ignore[union-attr]
         if not pointer:
-            raise LibBubbleHubError("native inference failed to build response")
+            raise LibBubbleError("native inference failed to build response")
         try:
             raw = ctypes.string_at(pointer).decode("utf-8")
             data = json.loads(raw)
             if not isinstance(data, dict):
-                raise LibBubbleHubError("native inference returned a non-object response")
+                raise LibBubbleError("native inference returned a non-object response")
             if "error" in data:
-                raise LibBubbleHubError(str(data["error"]))
+                raise LibBubbleError(str(data["error"]))
             return data
         finally:
             self.lib.bubblehub_scheduler_free_string(pointer)  # type: ignore[union-attr]
@@ -602,12 +602,12 @@ class NativeScheduler:
     def access_pending(self) -> list[dict[str, object]]:
         pointer = self.lib.bubblehub_access_pending_json()  # type: ignore[union-attr]
         if not pointer:
-            raise LibBubbleHubError("native access policy failed to list pending requests")
+            raise LibBubbleError("native access policy failed to list pending requests")
         try:
             raw = ctypes.string_at(pointer).decode("utf-8")
             data = json.loads(raw)
             if not isinstance(data, list):
-                raise LibBubbleHubError("native access policy returned a non-list pending response")
+                raise LibBubbleError("native access policy returned a non-list pending response")
             return [item for item in data if isinstance(item, dict)]
         finally:
             self.lib.bubblehub_access_free_string(pointer)  # type: ignore[union-attr]
@@ -615,12 +615,12 @@ class NativeScheduler:
     def access_manifest(self, agent_id: str) -> dict[str, object]:
         pointer = self.lib.bubblehub_access_manifest_json(_bytes(agent_id))  # type: ignore[union-attr]
         if not pointer:
-            raise LibBubbleHubError("native access policy failed to read manifest")
+            raise LibBubbleError("native access policy failed to read manifest")
         try:
             raw = ctypes.string_at(pointer).decode("utf-8")
             data = json.loads(raw)
             if not isinstance(data, dict):
-                raise LibBubbleHubError("native access policy returned a non-object manifest")
+                raise LibBubbleError("native access policy returned a non-object manifest")
             return data
         finally:
             self.lib.bubblehub_access_free_string(pointer)  # type: ignore[union-attr]
@@ -647,7 +647,7 @@ class NativeScheduler:
             _bytes(policy),
         )
         if int(result) != 0:
-            raise LibBubbleHubError("native access policy failed to apply policy")
+            raise LibBubbleError("native access policy failed to apply policy")
 
     def run_sandbox(
         self,
@@ -833,4 +833,4 @@ class NativeScheduler:
             self.lib.bubblehub_sandbox_run.argtypes = [ctypes.POINTER(SandboxConfig)]
             self.lib.bubblehub_sandbox_run.restype = ctypes.c_int
         except AttributeError as exc:
-            raise LibBubbleHubError("libbubblehub.so is missing required scheduler or sandbox symbols") from exc
+            raise LibBubbleError("libbubble.so is missing required scheduler or sandbox symbols") from exc

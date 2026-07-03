@@ -6,7 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from bubblehub.cli.main import app
-from bubblehub.native import LibBubbleHubError
+from bubblehub.native import LibBubbleError
 from bubblehub.node.client import SchedulerClient
 
 
@@ -121,9 +121,9 @@ def test_models_stop_evicts_all_loaded_models(tmp_path: Path, monkeypatch: pytes
     assert SchedulerClient.local().status_snapshot()["models"] == []
 
 
-def test_missing_libbubblehub_raises_actionable_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_libbubble_raises_actionable_error(monkeypatch: pytest.MonkeyPatch) -> None:
     import bubblehub.native as native
 
     monkeypatch.setattr(native.Path, "exists", lambda self: False)
-    with pytest.raises(LibBubbleHubError, match="libbubblehub.so is required"):
-        native._load_libbubblehub()
+    with pytest.raises(LibBubbleError, match="libbubble.so is required"):
+        native._load_libbubble()

@@ -140,12 +140,13 @@ docker run --rm --privileged --security-opt seccomp=unconfined \
   bash -lc '
     set -euo pipefail
     rm -rf /opt/bubblehub
-    rm -f /usr/local/bin/bubblehub /usr/local/bin/bubblehub-node
+    rm -f /usr/local/bin/bubble /usr/local/bin/bubblehub /usr/local/bin/bubblehub-node
     src="$(mktemp -d)"
     tar -xzf /tmp/bubblehub-source.tar.gz -C "$src"
     top_level="$(find "$src" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
     cd "$top_level"
     BUBBLEHUB_SKIP_DEPS=1 ./scripts/build.sh
+    bubble --help >/dev/null
     bubblehub --help >/dev/null
     command -v bubblehub-node >/dev/null
     test -x /usr/local/bin/bubblehub-node
@@ -161,18 +162,18 @@ docker run --rm --privileged --security-opt seccomp=unconfined \
     apt-get update
     apt-get install -y ca-certificates python3 sudo
     apt-get install -y /tmp/bubblehub.deb
+    command -v bubble >/dev/null
     command -v bubblehub >/dev/null
     command -v bubblehub-node >/dev/null
     command -v bubblehub-sandbox >/dev/null
-    command -v bubblehub-control-center >/dev/null
     command -v llama-server >/dev/null
     test -d /opt/bubblehub
+    bubble --help >/dev/null
     bubblehub --help >/dev/null
-    bubblehub app --help >/dev/null
     test -x /usr/bin/bubblehub-node
-    test -x /usr/bin/bubblehub-control-center
-    test -f /usr/share/applications/bubblehub-control-center.desktop
-    test -f /usr/share/icons/hicolor/scalable/apps/bubblehub-control-center.svg
+    test -x /opt/bubblehub/share/bubblehub/app/bubblehub
+    test -f /usr/share/applications/bubblehub.desktop
+    test -f /usr/share/icons/hicolor/scalable/apps/bubblehub.svg
   '
 
 echo "Validating Windows bootstrapper .exe..."
@@ -189,8 +190,8 @@ if ! strings "$EXE" | grep -q 'BubbleHub'; then
   echo "Windows bootstrapper does not contain expected BubbleHub branding." >&2
   exit 1
 fi
-if ! strings "$EXE" | grep -q 'Control Center'; then
-  echo "Windows bootstrapper does not contain expected Control Center branding." >&2
+if ! strings "$EXE" | grep -q 'desktop app'; then
+  echo "Windows bootstrapper does not contain expected desktop app branding." >&2
   exit 1
 fi
 

@@ -34,7 +34,7 @@ def command(
         log_debug("poc repl ready", resolved_speciality)
         while True:
             try:
-                text = input("bubblehub> ").strip()
+                text = input("bubble> ").strip()
             except (EOFError, KeyboardInterrupt):
                 log_debug("poc repl exiting", "interrupted")
                 console.print()

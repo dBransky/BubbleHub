@@ -1,1 +1,1 @@
-"""BubbleHub Control Center application package."""
+"""Desktop application package."""

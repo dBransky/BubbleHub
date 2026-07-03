@@ -1,6 +1,6 @@
 # Python Layer Architecture
 
-The Python layer is the user-facing control plane for BubbleHub. It owns CLI parsing, HTTP payload normalization, model registry/config loading, model file downloads, Python integration adapters, and `ctypes` marshalling into `libbubblehub`.
+The Python layer is the user-facing control plane for BubbleHub. It owns CLI parsing, HTTP payload normalization, model registry/config loading, model file downloads, Python integration adapters, and `ctypes` marshalling into `libbubble`.
 
 Python does not own sandbox hardening or LLM hosting. It must not start model backend processes, maintain warm-model caches, or decide whether a loaded model is reused.
 
@@ -11,15 +11,15 @@ Python entrypoints converge on the native library on the host, while sandboxed P
 - CLI commands parse user options and call `SchedulerClient` or `EngineSession`.
 - HTTP and SDK-compatible shims normalize external payloads and call `EngineSession`.
 - `EngineSession` selects a configured model candidate and ensures files exist, then sends one JSON request through `SchedulerClient.inference_chat()`.
-- When `BUBBLEHUB_SANDBOX=1`, `EngineSession` must not initialize `SchedulerClient` or load `libbubblehub`; it forwards chat requests to `BUBBLEHUB_SANDBOX_INFERENCE_HOST:BUBBLEHUB_SANDBOX_INFERENCE_PORT`.
+- When `BUBBLEHUB_SANDBOX=1`, `EngineSession` must not initialize `SchedulerClient` or load `libbubble`; it forwards chat requests to `BUBBLEHUB_SANDBOX_INFERENCE_HOST:BUBBLEHUB_SANDBOX_INFERENCE_PORT`.
 - `SchedulerClient` delegates to `bubblehub/native.py`.
-- `bubblehub/native.py` calls exported `libbubblehub` functions with `ctypes`.
+- `bubblehub/native.py` calls exported `libbubble` functions with `ctypes`.
 
 The Python layer is allowed to prepare data for native calls. It is not allowed to become a second scheduler, cache, sandbox, or model host.
 
 ## Hardening Policy
 
-Python should express policy and validate user input before calling native code, but security enforcement belongs to `libbubblehub`.
+Python should express policy and validate user input before calling native code, but security enforcement belongs to `libbubble`.
 
 - CLI code may reject unsafe obvious input, such as protected `--root-dir` locations.
 - Persistent sandbox metadata may be selected in Python, but path safety must be conservative: no symlink agent homes, no path escapes, and no source-tree roots unless explicitly allowed.
@@ -48,12 +48,12 @@ Package metadata and top-level version surface.
 
 ### `bubblehub/native.py`
 
-`ctypes` binding to `libbubblehub`. It loads `libbubblehub.so`, configures exported function signatures, converts Python values to C types, decodes native JSON strings, raises `LibBubbleHubError` for native failures, and exposes native hardware, scheduler, inference, and sandbox functions.
+`ctypes` binding to `libbubble`. It loads `libbubble.so`, configures exported function signatures, converts Python values to C types, decodes native JSON strings, raises `LibBubbleError` for native failures, and exposes native hardware, scheduler, inference, and sandbox functions.
 
 Policy:
 
 - Keep this file as a binding layer, not a policy engine.
-- Add new native inference surfaces here only after they exist in `libbubblehub`.
+- Add new native inference surfaces here only after they exist in `libbubble`.
 
 ### `bubblehub/inference.py`
 
@@ -84,19 +84,19 @@ Typer application root. Registers top-level commands and model/specialty subcomm
 
 ### `bubblehub/cli/run.py`
 
-Implements `bubblehub run`. It resolves binaries, maps host root/workdir into sandbox paths, stages non-system binaries into a temporary workspace when no `--root-dir` is provided, resolves the installed Ubuntu rootfs and per-agent overlay paths, handles persistent sandbox reuse metadata, registers/deregisters agents, prepares compatibility inference env vars, and calls native sandbox execution.
+Implements `bubble run`. It resolves binaries, maps host root/workdir into sandbox paths, stages non-system binaries into a temporary workspace when no `--root-dir` is provided, resolves the installed Ubuntu rootfs and per-agent overlay paths, handles persistent sandbox reuse metadata, registers/deregisters agents, prepares compatibility inference env vars, and calls native sandbox execution.
 
 Hardening policy:
 
 - Keep protected-root validation conservative.
 - Keep `/workspace` as the sandbox-facing root.
-- Require non-system `--binary` paths to be inside `--root-dir` when a root is provided; allow system binaries so `bubblehub shell --root-dir <dir>` can enter an existing workspace.
+- Require non-system `--binary` paths to be inside `--root-dir` when a root is provided; allow system binaries so `bubble shell --root-dir <dir>` can enter an existing workspace.
 - Pass rootfs and overlay paths to native code; do not mount or emulate overlay behavior in Python.
 - Do not bypass native sandboxing except through explicit `--unsafe-no-sandbox`.
 
 ### `bubblehub/cli/shell.py`
 
-Implements `bubblehub shell` by delegating to `run_agent()` with a shell binary. It should inherit sandbox behavior from `run.py`.
+Implements `bubble shell` by delegating to `run_agent()` with a shell binary. It should inherit sandbox behavior from `run.py`.
 
 ### `bubblehub/cli/prompt.py`
 
@@ -196,11 +196,11 @@ Package marker and high-level engine package description.
 
 ### `bubblehub/node/client.py`
 
-Python facade over `LibBubbleHub`. It provides a more ergonomic scheduler client for registering agents, checking limits, updating model records, reading snapshots, evicting models, and calling native inference.
+Python facade over `libbubble`. It provides a more ergonomic scheduler client for registering agents, checking limits, updating model records, reading snapshots, evicting models, and calling native inference.
 
 Policy:
 
-- Delegate model lifecycle decisions to `libbubblehub`.
+- Delegate model lifecycle decisions to `libbubble`.
 - Keep IDs and Python call shapes convenient, but do not cache native state.
 
 ### `bubblehub/node/daemon.py`
@@ -228,7 +228,7 @@ Package marker for TUI modules.
 ## Development Rules
 
 - New user-facing inference entrypoints must call `EngineSession` or `SchedulerClient.inference_chat()`.
-- New native capabilities must be added to `libbubblehub` first, then exposed in `bubblehub/native.py`.
+- New native capabilities must be added to `libbubble` first, then exposed in `bubblehub/native.py`.
 - Tests for model caching should assert stable native pid/port and single backend start across Python entrypoints.
 - Tests for sandbox behavior should assert native workspace/home/PWD behavior and no host path leak.
 - Any code that imports backend process adapters or starts model processes from Python violates the architecture.

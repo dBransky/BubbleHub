@@ -1,5 +1,5 @@
-libbubblehub_dep = declare_dependency(
-  link_with: libbubblehub,
+libbubble_dep = declare_dependency(
+  link_with: libbubble,
   include_directories: include_dir,
 )
 
@@ -19,9 +19,9 @@ test_programs = [
 
 foreach name : test_programs
   exe = executable(
-    'bubblehub-' + name + '-test',
+    'bubble-' + name + '-test',
     name + '_test.c',
-    dependencies: libbubblehub_dep,
+    dependencies: libbubble_dep,
     build_rpath: test_rpath,
     install: false,
   )

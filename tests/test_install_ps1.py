@@ -7,8 +7,8 @@ def test_install_ps1_creates_start_menu_and_desktop_shortcuts() -> None:
     script = Path("scripts/install.ps1").read_text(encoding="utf-8")
 
     assert 'GetFolderPath("Desktop")' in script
-    assert "BubbleHub Control Center.lnk" in script
-    assert "New-ControlCenterShortcut" in script
+    assert "BubbleHub.lnk" in script
+    assert "New-BubbleHubShortcut" in script
 
 
 def test_install_ps1_supports_release_smoke_overrides() -> None:
@@ -43,8 +43,8 @@ def test_package_release_supports_exe_ps1_url_override() -> None:
 def test_linux_release_smoke_exercises_visible_cli_command() -> None:
     script = Path("scripts/ci/run-linux-release-install-smoke.sh").read_text(encoding="utf-8")
 
-    assert "validating BubbleHub CLI" in script
-    assert "bubblehub specialties list" in script
+    assert "validating Bubble CLI" in script
+    assert "bubble specialties list" in script
     assert "default-instruct" in script
 
 

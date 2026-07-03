@@ -1403,7 +1403,7 @@ char *bubblehub_inference_chat_json(const char *request_json) {
     int port = 0;
     int64_t pid = 0;
     if (ensure_native_model_loaded(&request, &port, &pid) != 0) {
-        return json_response_error("failed to load or attach model in libbubblehub");
+        return json_response_error("failed to load or attach model in libbubble");
     }
 
     char http_response[65536];

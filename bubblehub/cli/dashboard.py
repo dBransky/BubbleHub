@@ -13,5 +13,5 @@ def command(
     """Open the htop-style BubbleHub terminal dashboard."""
 
     if is_sandboxed():
-        raise typer.BadParameter("bubblehub dashboard is only available to the real host user, not from inside a BubbleHub sandbox")
+        raise typer.BadParameter("bubble dashboard is only available to the real host user, not from inside a BubbleHub sandbox")
     run_dashboard(refresh_seconds=refresh, once=once)

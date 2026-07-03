@@ -45,29 +45,30 @@ def _launch_tauri_app(url: str) -> None:
     env["BUBBLEHUB_APP_URL"] = url
     result = subprocess.run([*command, url], env=env, check=False)
     if result.returncode != 0:
-        raise RuntimeError(f"BubbleHub Control Center exited with status {result.returncode}")
+        raise RuntimeError(f"Desktop application exited with status {result.returncode}")
 
 
 def _tauri_command() -> list[str]:
     configured = os.environ.get("BUBBLEHUB_TAURI_BIN")
     if configured:
         return [configured]
-    installed = shutil.which("bubblehub-control-center")
-    if installed:
-        return [installed]
     root = Path(__file__).resolve().parents[2]
-    release_binary = root / "app" / "target" / "release" / "bubblehub-control-center"
-    if release_binary.is_file() and os.access(release_binary, os.X_OK):
-        return [str(release_binary)]
-    debug_binary = root / "app" / "target" / "debug" / "bubblehub-control-center"
-    if debug_binary.is_file() and os.access(debug_binary, os.X_OK):
-        return [str(debug_binary)]
+    candidates = [
+        Path.home() / ".local" / "share" / "bubblehub" / "app" / "bubblehub",
+        Path(sys.prefix) / "share" / "bubblehub" / "app" / "bubblehub",
+        Path("/usr/share/bubblehub/app/bubblehub"),
+        root / "app" / "target" / "release" / "bubblehub",
+        root / "app" / "target" / "debug" / "bubblehub",
+    ]
+    for binary in candidates:
+        if binary.is_file() and os.access(binary, os.X_OK):
+            return [str(binary)]
     installed_now = _prompt_and_install_tauri_app()
     if installed_now:
         return [str(installed_now)]
     raise RuntimeError(
-        "BubbleHub Control Center is not installed. Run `BUBBLEHUB_INSTALL_APP=1 bubblehub app` from an interactive terminal, "
-        "or set BUBBLEHUB_TAURI_BIN to the bubblehub-control-center executable."
+        "The desktop application is not installed. Run `BUBBLEHUB_INSTALL_APP=1 bubblehub` from an interactive terminal, "
+        "or set BUBBLEHUB_TAURI_BIN to the desktop executable."
     )
 
 
@@ -84,7 +85,7 @@ def _prompt_and_install_tauri_app() -> Path | None:
 
 def _ask_install_desktop_app() -> bool:
     selected = _choose_desktop_app_install(
-        title="BubbleHub Control Center",
+        title="BubbleHub",
         message=(
             "The desktop app is not installed yet.\n" "Do you want to install it now?\n" "You can keep using built-in CLI commands if you prefer."
         ),
@@ -119,8 +120,8 @@ def _install_tauri_app() -> Path:
     if cargo is None:
         raise RuntimeError("cargo is required to install the BubbleHub desktop app.")
     target_dir = Path.home() / ".cache" / "bubblehub" / "app-target"
-    bin_dir = Path.home() / ".local" / "bin"
-    bin_dir.mkdir(parents=True, exist_ok=True)
+    install_dir = Path.home() / ".local" / "share" / "bubblehub" / "app"
+    install_dir.mkdir(parents=True, exist_ok=True)
     target_dir.mkdir(parents=True, exist_ok=True)
     _run_app_deps_installer()
     subprocess.run(
@@ -135,11 +136,11 @@ def _install_tauri_app() -> Path:
         ],
         check=True,
     )
-    built = target_dir / "release" / "bubblehub-control-center"
-    installed = bin_dir / "bubblehub-control-center"
+    built = target_dir / "release" / "bubblehub"
+    installed = install_dir / "bubblehub"
     shutil.copy2(built, installed)
     installed.chmod(0o755)
-    print(f"Installed BubbleHub Control Center: {installed}", file=sys.stderr)
+    print(f"Installed desktop application: {installed}", file=sys.stderr)
     return installed
 
 
@@ -189,7 +190,7 @@ def _can_prompt() -> bool:
 
 
 def _serve_until_interrupt(server: object, url: str) -> None:
-    print(f"BubbleHub Control Center: {url}")
+    print(f"bubblehub: {url}")
     stop = Event()
     try:
         while True:

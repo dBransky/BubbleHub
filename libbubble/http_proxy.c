@@ -357,7 +357,7 @@ static int connect_to_upstream(const char *host, uint32_t port) {
 static int write_denied_response(int client_fd) {
     static const char body[] =
         "BubbleHub proxy denied the request\n"
-        "Run `bubblehub dashboard` to review pending access requests.\n";
+        "Run `bubble dashboard` to review pending access requests.\n";
     char header[256];
     int written = snprintf(
         header,

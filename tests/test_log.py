@@ -175,7 +175,7 @@ def test_run_cli_writes_logs_to_file(tmp_path: Path) -> None:
 
     log_path = tmp_path / "cli.log"
     previous = sys.argv
-    sys.argv = ["bubblehub", "poc", "--log-level", "debug", "--log-file", str(log_path), "-h"]
+    sys.argv = ["bubble", "poc", "--log-level", "debug", "--log-file", str(log_path), "-h"]
     try:
         from bubblehub.cli.main import run_cli
 
@@ -185,7 +185,7 @@ def test_run_cli_writes_logs_to_file(tmp_path: Path) -> None:
         sys.argv = previous
 
     text = log_path.read_text(encoding="utf-8")
-    assert "bubblehub cli initialized" in text
+    assert "bubble cli initialized" in text
     assert "log_level=debug" in text
 
 
@@ -213,13 +213,13 @@ def test_reconfigure_without_log_file_returns_to_stderr(
 def test_native_logs_redirect_to_file(tmp_path: Path, capsys: io.StringIO) -> None:
     import ctypes
 
-    from bubblehub.native import LibBubbleHubError, _bytes, _load_libbubblehub
+    from bubblehub.native import LibBubbleError, _bytes, _load_libbubble
 
     try:
-        lib = _load_libbubblehub()
+        lib = _load_libbubble()
         lib.bubblehub_log_set_file
-    except (LibBubbleHubError, AttributeError):
-        pytest.skip("libbubblehub logging symbols are unavailable")
+    except (LibBubbleError, AttributeError):
+        pytest.skip("libbubble logging symbols are unavailable")
 
     log_path = tmp_path / "native.log"
     lib.bubblehub_log_set_level.argtypes = [ctypes.c_char_p]
@@ -253,13 +253,13 @@ def test_native_logs_redirect_to_file(tmp_path: Path, capsys: io.StringIO) -> No
 def test_configure_logging_syncs_native_log_file(tmp_path: Path, capsys: io.StringIO) -> None:
     import ctypes
 
-    from bubblehub.native import LibBubbleHubError, _load_libbubblehub
+    from bubblehub.native import LibBubbleError, _load_libbubble
 
     try:
-        lib = _load_libbubblehub()
+        lib = _load_libbubble()
         lib.bubblehub_log_set_file
-    except (LibBubbleHubError, AttributeError):
-        pytest.skip("libbubblehub logging symbols are unavailable")
+    except (LibBubbleError, AttributeError):
+        pytest.skip("libbubble logging symbols are unavailable")
 
     log_path = tmp_path / "both.log"
     bubblehub_log.configure_logging("debug", log_path)
@@ -287,7 +287,7 @@ def test_version_works_after_log_option_extraction() -> None:
     bubblehub_log.configure_logging(level)
     result = CliRunner().invoke(app, cleaned)
     assert result.exit_code == 0
-    assert "bubblehub" in result.output
+    assert "bubble" in result.output
 
 
 def test_sandbox_rejects_host_log_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: io.StringIO) -> None:

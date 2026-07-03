@@ -21,8 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _require_bubblehub_cli() -> None:
-    if shutil.which("bubblehub") is None:
-        pytest.skip("bubblehub is not installed")
+    if shutil.which("bubble") is None:
+        pytest.skip("bubble is not installed")
 
 
 def _cli_e2e_env(tmp_path: Path) -> dict[str, str]:
@@ -149,7 +149,7 @@ def _run_policy_probe(root_dir: Path, tmp_path: Path, target_url: str, expected_
         f'printf \'status=%s\\n\' "$status"; cat "$body"; test "$status" = {expected_status}'
     )
     return _run_cli(
-        ["bubblehub", "run", "--root-dir", str(root_dir), "--binary", "/bin/sh", "--", "-c", script],
+        ["bubble", "run", "--root-dir", str(root_dir), "--binary", "/bin/sh", "--", "-c", script],
         tmp_path=tmp_path,
         timeout=120,
     )
@@ -210,7 +210,7 @@ def _run_pty_shell(
     _require_bubblehub_cli()
     root_dir = _pty_shell_root_dir(env)
     root_dir.mkdir(parents=True, exist_ok=True)
-    shell_command = ["bubblehub", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"]
+    shell_command = ["bubble", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"]
 
     pid, master_fd = pty.fork()
     output = ""
@@ -356,8 +356,8 @@ def _kill_pty_child(pid: int) -> None:
 @pytest.mark.parametrize(
     "command",
     [
-        ["bubblehub", "shell", "--root-dir", "examples/basic"],
-        ["bubblehub", "shell", "--root-dir", "examples/basic", "--allow-network"],
+        ["bubble", "shell", "--root-dir", "examples/basic"],
+        ["bubble", "shell", "--root-dir", "examples/basic", "--allow-network"],
     ],
 )
 def test_bubblehub_shell_examples_basic_cli_e2e(command: list[str], tmp_path: Path) -> None:
@@ -375,7 +375,7 @@ def test_bubblehub_shell_access_prompt_hands_terminal_to_host_cli(tmp_path: Path
 
     with _host_http_server() as target_url:
         output = _run_pty_shell_access_prompt(
-            ["bubblehub", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"],
+            ["bubble", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"],
             _cli_e2e_env(tmp_path),
             target_url,
         )
@@ -412,7 +412,7 @@ def test_bubblehub_shell_force_new_prompts_for_plain_google_curl_with_default_st
     env["HOME"] = str(home)
 
     output = _run_pty_shell_google_denial_prompt(
-        ["bubblehub", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"],
+        ["bubble", "shell", "--root-dir", str(root_dir), "--force-new-sandbox"],
         env,
     )
 
@@ -444,7 +444,7 @@ def test_bubblehub_run_prompts_for_access_when_terminal_is_interactive(tmp_path:
             'printf "status=%s\\n" "$status"; test "$status" = 200'
         )
         output = _run_pty_command_access_prompt(
-            ["bubblehub", "run", "--root-dir", str(root_dir), "--binary", "/bin/sh", "--", "-c", script],
+            ["bubble", "run", "--root-dir", str(root_dir), "--binary", "/bin/sh", "--", "-c", script],
             _cli_e2e_env(tmp_path),
             "status=200",
         )
@@ -462,7 +462,7 @@ def test_bubblehub_shell_name_appears_in_prompt(tmp_path: Path) -> None:
     root_dir = tmp_path / "named-shell-workspace"
     root_dir.mkdir()
     env = _cli_e2e_env(tmp_path)
-    command = ["bubblehub", "shell", "--name", "researcher", "--root-dir", str(root_dir), "--force-new-sandbox"]
+    command = ["bubble", "shell", "--name", "researcher", "--root-dir", str(root_dir), "--force-new-sandbox"]
     pid, master_fd = pty.fork()
     output = ""
     if pid == 0:
@@ -489,9 +489,9 @@ def test_bubblehub_run_pending_access_can_be_resolved_from_dashboard_cli(tmp_pat
         denied = _run_policy_probe(root_dir, tmp_path, target_url, 403)
         assert denied.returncode == 0, denied.stdout
         assert "status=403" in denied.stdout
-        assert "bubblehub dashboard" in denied.stdout
+        assert "bubble dashboard" in denied.stdout
 
-        dashboard = _run_cli(["bubblehub", "dashboard", "--once"], tmp_path=tmp_path, stdin="always\n", timeout=120)
+        dashboard = _run_cli(["bubble", "dashboard", "--once"], tmp_path=tmp_path, stdin="always\n", timeout=120)
         assert dashboard.returncode == 0, dashboard.stdout
         assert "Pending sandbox access requests" in dashboard.stdout
         assert "http GET 127.0.0.1/cli-policy" in dashboard.stdout
@@ -506,14 +506,14 @@ def test_bubblehub_run_pending_access_can_be_resolved_from_dashboard_cli(tmp_pat
             "case \"$line\" in *'200 Connection Established'*) exit 0 ;; *) exit 1 ;; esac"
         )
         connect = _run_cli(
-            ["bubblehub", "run", "--root-dir", str(root_dir), "--binary", "/usr/bin/bash", "--", "-lc", connect_script],
+            ["bubble", "run", "--root-dir", str(root_dir), "--binary", "/usr/bin/bash", "--", "-lc", connect_script],
             tmp_path=tmp_path,
             timeout=120,
         )
         assert connect.returncode == 0, connect.stdout
         assert "connect_response=HTTP/1.1 200 Connection Established" in connect.stdout
 
-        clear_dashboard = _run_cli(["bubblehub", "dashboard", "--once"], tmp_path=tmp_path, timeout=120)
+        clear_dashboard = _run_cli(["bubble", "dashboard", "--once"], tmp_path=tmp_path, timeout=120)
         assert clear_dashboard.returncode == 0, clear_dashboard.stdout
         assert "Pending sandbox access requests" not in clear_dashboard.stdout
 
@@ -527,18 +527,18 @@ def test_bubblehub_manifest_cli_edits_policy_by_agent_id_and_root_dir(tmp_path: 
     marker.write_text(f"{agent_id}\n", encoding="utf-8")
     _apply_manifest_policy(tmp_path, agent_id, "always")
 
-    listed = _run_cli(["bubblehub", "manifest", "--root-dir", str(root_dir), "--no-edit"], tmp_path=tmp_path)
+    listed = _run_cli(["bubble", "manifest", "--root-dir", str(root_dir), "--no-edit"], tmp_path=tmp_path)
     assert listed.returncode == 0, listed.stdout
     assert "Access manifest" in listed.stdout
     assert "api.example.com" in listed.stdout
     assert "always" in listed.stdout
 
-    edited = _run_cli(["bubblehub", "manifest", "--agent-id", agent_id], tmp_path=tmp_path, stdin="1\nnever\n")
+    edited = _run_cli(["bubble", "manifest", "--agent-id", agent_id], tmp_path=tmp_path, stdin="1\nnever\n")
     assert edited.returncode == 0, edited.stdout
     assert "Updated policy 1 to" in edited.stdout
     assert "never" in edited.stdout
 
-    verified = _run_cli(["bubblehub", "manifest", "--agent-id", agent_id, "--no-edit"], tmp_path=tmp_path)
+    verified = _run_cli(["bubble", "manifest", "--agent-id", agent_id, "--no-edit"], tmp_path=tmp_path)
     assert verified.returncode == 0, verified.stdout
     assert "api.example.com" in verified.stdout
     assert "never" in verified.stdout
@@ -562,7 +562,7 @@ def test_bubblehub_run_force_new_sandbox_discards_unremovable_overlay_workdir(tm
     try:
         result = _run_cli(
             [
-                "bubblehub",
+                "bubble",
                 "run",
                 "--binary",
                 "/bin/true",
@@ -588,21 +588,21 @@ def test_bubblehub_run_force_new_sandbox_discards_unremovable_overlay_workdir(tm
 @pytest.mark.parametrize(
     ("command", "expected"),
     [
-        (["bubblehub", "--version"], "bubblehub "),
-        (["bubblehub", "--help"], "BubbleHub local agent runtime"),
-        (["bubblehub", "specialties", "list"], "default-instruct"),
-        (["bubblehub", "ps"], "Memory pressure:"),
-        (["bubblehub", "queue"], "BubbleHub Waiting Queue"),
-        (["bubblehub", "poc", "--help"], "Start a local model REPL"),
-        (["bubblehub", "prompt", "--help"], "Run one local prompt"),
-        (["bubblehub", "run", "--help"], "Run a binary"),
-        (["bubblehub", "shell", "--help"], "Open an interactive shell"),
-        (["bubblehub", "dashboard", "--help"], "--once"),
-        (["bubblehub", "manifest", "--help"], "Inspect and edit"),
-        (["bubblehub", "serve", "--help"], "OpenAI-compatible"),
-        (["bubblehub", "models", "--help"], "Inspect and choose"),
-        (["bubblehub", "models", "list", "--help"], "List"),
-        (["bubblehub", "specialties", "--help"], "Inspect available"),
+        (["bubble", "--version"], "bubble "),
+        (["bubble", "--help"], "BubbleHub local agent runtime"),
+        (["bubble", "specialties", "list"], "default-instruct"),
+        (["bubble", "ps"], "Memory pressure:"),
+        (["bubble", "queue"], "BubbleHub Waiting Queue"),
+        (["bubble", "poc", "--help"], "Start a local model REPL"),
+        (["bubble", "prompt", "--help"], "Run one local prompt"),
+        (["bubble", "run", "--help"], "Run a binary"),
+        (["bubble", "shell", "--help"], "Open an interactive shell"),
+        (["bubble", "dashboard", "--help"], "--once"),
+        (["bubble", "manifest", "--help"], "Inspect and edit"),
+        (["bubble", "serve", "--help"], "OpenAI-compatible"),
+        (["bubble", "models", "--help"], "Inspect and choose"),
+        (["bubble", "models", "list", "--help"], "List"),
+        (["bubble", "specialties", "--help"], "Inspect available"),
     ],
 )
 def test_bubblehub_host_cli_tools_e2e(command: list[str], expected: str, tmp_path: Path) -> None:
@@ -614,7 +614,7 @@ def test_bubblehub_host_cli_tools_e2e(command: list[str], expected: str, tmp_pat
 @pytest.mark.integration
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_prompt_e2e(tmp_path: Path) -> None:
-    commands = [f"bubblehub prompt --text '{_SANDBOX_LLM_PROMPT}'"]
+    commands = [f"bubble prompt --text '{_SANDBOX_LLM_PROMPT}'"]
     expected = [_SANDBOX_LLM_EXPECTED]
     _run_pty_shell(
         commands,
@@ -626,27 +626,27 @@ def test_sandbox_prompt_e2e(tmp_path: Path) -> None:
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_poc_e2e(tmp_path: Path) -> None:
-    commands = ["bubblehub poc"]
-    expected = ["bubblehub>"]
+    commands = ["bubble poc"]
+    expected = ["bubble>"]
     _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_ps_blocked_inside_sandbox(tmp_path: Path) -> None:
-    commands = ["bubblehub ps"]
+    commands = ["bubble ps"]
     expected = ["only available to the real host user"]
     _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_app_blocked_inside_sandbox(tmp_path: Path) -> None:
-    commands = ["bubblehub app"]
+    commands = ["bubble app"]
     expected = ["only available to the real host user"]
     _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="pty-backed shell test requires POSIX")
 def test_sandbox_dashboard_blocked_inside_sandbox(tmp_path: Path) -> None:
-    commands = ["bubblehub dashboard"]
+    commands = ["bubble dashboard"]
     expected = ["only available to the real host user"]
     _run_pty_shell(commands, _cli_e2e_env(tmp_path), expected)

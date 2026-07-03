@@ -214,10 +214,10 @@ def test_native_sandbox_uses_shared_scheduler_state(tmp_path: Path, monkeypatch:
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="sandbox is Linux-only")
-def test_native_sandbox_denies_bubblehub_ps_when_env_is_unset(tmp_path: Path) -> None:
-    launcher = Path("/usr/local/bin/bubblehub")
+def test_native_sandbox_denies_bubble_ps_when_env_is_unset(tmp_path: Path) -> None:
+    launcher = Path("/usr/local/bin/bubble")
     if not launcher.exists():
-        pytest.skip("installed BubbleHub launcher not available")
+        pytest.skip("installed Bubble CLI launcher not available")
 
     result = NativeScheduler().run_sandbox(
         "/usr/bin/env",
@@ -235,14 +235,17 @@ def test_native_sandbox_denies_bubblehub_ps_when_env_is_unset(tmp_path: Path) ->
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="sandbox is Linux-only")
 def test_native_sandbox_blocks_installed_bubblehub_writes(tmp_path: Path) -> None:
-    if not Path("/opt/bubblehub").exists() or not Path("/usr/local/bin/bubblehub").exists():
+    if not Path("/opt/bubblehub").exists() or not Path("/usr/local/bin/bubble").exists() or not Path("/usr/local/bin/bubblehub").exists():
         pytest.skip("installed BubbleHub runtime not available")
     result = NativeScheduler().run_sandbox(
         "/bin/sh",
         [
             "/bin/sh",
             "-c",
-            "touch /opt/bubblehub/.bubblehub-denied 2>/dev/null && exit 10; printf x >> /usr/local/bin/bubblehub 2>/dev/null && exit 11; exit 0",
+            "touch /opt/bubblehub/.bubblehub-denied 2>/dev/null && exit 10; "
+            "printf x >> /usr/local/bin/bubble 2>/dev/null && exit 11; "
+            "printf x >> /usr/local/bin/bubblehub 2>/dev/null && exit 12; "
+            "exit 0",
         ],
         resource_niceness=0,
         memory_max=2 * 1024 * 1024 * 1024,
@@ -294,10 +297,10 @@ def test_native_sandbox_rejects_protected_writable_root() -> None:
 
 
 @pytest.mark.skipif(platform.system() != "Linux", reason="sandbox is Linux-only")
-def test_native_sandbox_strips_pythonpath_for_bubblehub_launcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    launcher = Path("/usr/local/bin/bubblehub")
+def test_native_sandbox_strips_pythonpath_for_bubble_launcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    launcher = Path("/usr/local/bin/bubble")
     if not launcher.exists():
-        pytest.skip("installed BubbleHub launcher not available")
+        pytest.skip("installed Bubble CLI launcher not available")
     malicious = tmp_path / "bubblehub"
     malicious.mkdir()
     (malicious / "__init__.py").write_text("raise RuntimeError('shadowed bubblehub import')\n", encoding="utf-8")
@@ -359,7 +362,7 @@ def test_native_sandbox_allows_agent_local_log_file(tmp_path: Path, monkeypatch:
         assert result == 0
         log_path = tmp_path / "bubblehub.log"
         assert log_path.is_file()
-        assert "bubblehub cli initialized" in log_path.read_text(encoding="utf-8")
+        assert "bubble cli initialized" in log_path.read_text(encoding="utf-8")
         assert not host_log.exists()
     finally:
         host_log.unlink(missing_ok=True)

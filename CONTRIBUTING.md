@@ -79,22 +79,22 @@ Before opening a pull request, run the same tests used in CI.
 
 ### Unit Tests
 
-CI runs libbubblehub C unit tests and Python unit tests together:
+CI runs libbubble C unit tests and Python unit tests together:
 
 ```bash
 docker build -f docker/Dockerfile --target unit-test -t bubblehub:unit .
 docker run --rm --privileged --security-opt seccomp=unconfined bubblehub:unit
 ```
 
-To run only the libbubblehub Meson tests locally:
+To run only the libbubble Meson tests locally:
 
 ```bash
-meson setup libbubblehub/build libbubblehub --prefix=/usr/local
-meson compile -C libbubblehub/build
-meson test -C libbubblehub/build --print-errorlogs
+meson setup libbubble/build libbubble --prefix=/usr/local
+meson compile -C libbubble/build
+meson test -C libbubble/build --print-errorlogs
 ```
 
-C tests live under `libbubblehub/tests/` and link against the built `libbubblehub.so`. Mount-related overfs tests require privileges and skip automatically in unprivileged environments; CI runs them inside the privileged Docker unit-test image.
+C tests live under `libbubble/tests/` and link against the built `libbubble.so`. Mount-related overfs tests require privileges and skip automatically in unprivileged environments; CI runs them inside the privileged Docker unit-test image.
 
 ### Coverage
 

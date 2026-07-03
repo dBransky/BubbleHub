@@ -15,7 +15,7 @@ def command(
     """Show running agents and loaded models."""
 
     if is_sandboxed():
-        raise typer.BadParameter("bubblehub ps is only available to the real host user, not from inside a BubbleHub sandbox")
+        raise typer.BadParameter("bubble ps is only available to the real host user, not from inside a BubbleHub sandbox")
     client = SchedulerClient.local()
     kill_agent_id = kill if isinstance(kill, str) else None
     if kill_agent_id:

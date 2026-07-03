@@ -29,7 +29,7 @@ def _render(console: Console) -> None:
         table.add_column(column)
     queue = SchedulerClient.local().queue_snapshot()
     if not queue:
-        table.add_row("", "", "", "", "", "", "No waiting jobs; admitted work appears in bubblehub ps/dashboard models.")
+        table.add_row("", "", "", "", "", "", "No waiting jobs; admitted work appears in bubble ps/dashboard models.")
         console.print(table)
         return
     for item in queue:

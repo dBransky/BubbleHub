@@ -18,8 +18,8 @@ fi
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 INSTALL_PREFIX="${BUBBLEHUB_PREFIX:-/opt/bubblehub}"
 BIN_DIR="${BUBBLEHUB_BIN_DIR:-/usr/local/bin}"
-BUILD_DIR="$ROOT/libbubblehub/build"
-C_SOURCE_DIR="$ROOT/libbubblehub"
+BUILD_DIR="$ROOT/libbubble/build"
+C_SOURCE_DIR="$ROOT/libbubble"
 SUDO="${SUDO:-sudo}"
 BUBBLEHUB_GPU_MODE="${BUBBLEHUB_GPU:-auto}"
 ROOTFS_DIR="${BUBBLEHUB_ROOTFS_DIR:-$INSTALL_PREFIX/rootfs/ubuntu-26.04}"
@@ -138,15 +138,21 @@ ${SUDO} env BUBBLEHUB_GPU="$BUBBLEHUB_GPU_MODE" "$INSTALL_PREFIX/bin/python" -m 
   --mode "$BUBBLEHUB_GPU_MODE" \
   --wheel "${BUBBLEHUB_WHEELS[0]}" \
   --profile-out "$INSTALL_PREFIX/install-profile.json"
+${SUDO} mv "$INSTALL_PREFIX/bin/bubble" "$INSTALL_PREFIX/bin/bubble-entrypoint"
 ${SUDO} mv "$INSTALL_PREFIX/bin/bubblehub" "$INSTALL_PREFIX/bin/bubblehub-entrypoint"
 ${SUDO} mv "$INSTALL_PREFIX/bin/bubblehub-node" "$INSTALL_PREFIX/bin/bubblehub-node-entrypoint"
 
 echo "Linking global BubbleHub commands into ${BIN_DIR}..."
 ${SUDO} mkdir -p "$BIN_DIR"
-${SUDO} rm -f "$BIN_DIR/bubblehub" "$BIN_DIR/bubblehub-node"
+${SUDO} rm -f "$BIN_DIR/bubble" "$BIN_DIR/bubblehub" "$BIN_DIR/bubblehub-node"
+${SUDO} tee "$BIN_DIR/bubble" >/dev/null <<EOF
+#!/usr/bin/env bash
+exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("BUBBLEHUB_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path(sys.prefix) / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "bubblehub").is_dir()]; sys.argv[0] = "bubble"; from bubblehub.cli.main import run_cli; run_cli()' "\$@"
+EOF
+${SUDO} chmod 0755 "$BIN_DIR/bubble"
 ${SUDO} tee "$BIN_DIR/bubblehub" >/dev/null <<EOF
 #!/usr/bin/env bash
-exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("BUBBLEHUB_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path(sys.prefix) / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "bubblehub").is_dir()]; sys.argv[0] = "bubblehub"; from bubblehub.cli.main import run_cli; run_cli()' "\$@"
+exec "$INSTALL_PREFIX/bin/python" -I -c 'import os, sys; from pathlib import Path; candidates = [Path(p) for p in os.environ.get("BUBBLEHUB_PYTHONPATH", "").split(os.pathsep) if p]; lib = Path(sys.prefix) / "lib"; candidates.extend(sorted(lib.glob("python*/site-packages"), reverse=True) if lib.is_dir() else []); sys.path[:0] = [str(p) for p in candidates if (p / "bubblehub").is_dir()]; sys.argv[0] = "bubblehub"; from bubblehub.cli.app import run_app; run_app()' "\$@"
 EOF
 ${SUDO} chmod 0755 "$BIN_DIR/bubblehub"
 ${SUDO} tee "$BIN_DIR/bubblehub-node" >/dev/null <<EOF
@@ -164,9 +170,9 @@ if [[ "${BUBBLEHUB_INSTALL_APP:-1}" != "0" && "${BUBBLEHUB_SKIP_TAURI:-0}" != "1
     echo "cargo not found. Run ./scripts/install-deps.sh first or set BUBBLEHUB_SKIP_TAURI=1." >&2
     exit 1
   fi
-  echo "Building BubbleHub Control Center Tauri desktop app..."
+  echo "Building BubbleHub Tauri desktop app..."
   "$ROOT/scripts/ci/build-tauri-app.sh"
-  ${SUDO} install -m 0755 "$ROOT/app/target/release/bubblehub-control-center" "$BIN_DIR/bubblehub-control-center"
+  ${SUDO} install -m 0755 "$ROOT/app/target/release/bubblehub" "$INSTALL_PREFIX/share/bubblehub/app/bubblehub"
 fi
 
 if [[ "${BUBBLEHUB_SKIP_ROOTFS:-0}" == "1" ]]; then
@@ -182,4 +188,4 @@ bubblehub_run_base_model_setup
 
 echo
 echo "BubbleHub system install is ready."
-echo "Run: bubblehub --help"
+echo "Run: bubble --help"

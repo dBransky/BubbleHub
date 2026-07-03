@@ -15,7 +15,7 @@ comment:
 
 ignore:
   - "**/*_test.c"
-  - "libbubblehub/tests/**"
+  - "libbubble/tests/**"
 
 component_management:
   default_rules:
@@ -23,10 +23,10 @@ component_management:
       - type: project
         target: 45%
   individual_components:
-    - component_id: libbubblehub
-      name: libbubblehub
+    - component_id: libbubble
+      name: libbubble
       paths:
-        - libbubblehub/**
+        - libbubble/**
     - component_id: bubblehub
       name: bubblehub
       paths:

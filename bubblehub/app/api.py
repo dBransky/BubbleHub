@@ -86,7 +86,7 @@ def _handler_for(config: ControlApiConfig) -> type[BaseHTTPRequestHandler]:
                     self._send_json(
                         {
                             "status": "ok",
-                            "service": "bubblehub-control-center",
+                            "service": "bubblehub",
                             "version": __version__,
                             "time": time.time(),
                         }
@@ -274,7 +274,7 @@ def _static_asset(name: str) -> Path:
         path = directory / name
         if path.is_file():
             return path
-    raise FileNotFoundError(f"BubbleHub app static asset not found: {name}")
+    raise FileNotFoundError(f"Desktop static asset not found: {name}")
 
 
 def _icon_asset(name: str) -> Path:
@@ -297,4 +297,4 @@ def _icon_asset(name: str) -> Path:
         path = directory / name
         if path.is_file():
             return path
-    raise FileNotFoundError(f"BubbleHub app icon not found: {name}")
+    raise FileNotFoundError(f"Desktop icon not found: {name}")

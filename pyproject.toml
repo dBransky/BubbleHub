@@ -34,7 +34,8 @@ langchain = [
 ]
 
 [project.scripts]
-bubblehub = "bubblehub.cli.main:run_cli"
+bubble = "bubblehub.cli.main:run_cli"
+bubblehub = "bubblehub.cli.app:run_app"
 bubblehub-node = "bubblehub.node.daemon:main"
 
 [tool.setuptools.packages.find]
@@ -45,39 +46,39 @@ include = ["bubblehub*"]
 bubblehub = ["config/*.yaml"]
 
 [tool.setuptools.data-files]
-"share/bubblehub/libbubblehub" = [
-  "libbubblehub/bubblehub_sandbox_main.c",
-  "libbubblehub/access_policy.c",
-  "libbubblehub/hw_detect.c",
-  "libbubblehub/http_proxy.c",
-  "libbubblehub/landlock.c",
-  "libbubblehub/limits.c",
-  "libbubblehub/log.c",
-  "libbubblehub/meson.build",
-  "libbubblehub/overfs.c",
-  "libbubblehub/scheduler.c",
-  "libbubblehub/sandbox.c",
-  "libbubblehub/tests/access_policy_test.c",
-  "libbubblehub/tests/http_proxy_test.c",
-  "libbubblehub/tests/hw_test.c",
-  "libbubblehub/tests/landlock_test.c",
-  "libbubblehub/tests/limits_test.c",
-  "libbubblehub/tests/log_test.c",
-  "libbubblehub/tests/meson.build",
-  "libbubblehub/tests/overfs_test.c",
-  "libbubblehub/tests/sandbox_test.c",
-  "libbubblehub/tests/scheduler_test.c",
-  "libbubblehub/tests/test_common.h",
+"share/bubblehub/libbubble" = [
+  "libbubble/bubblehub_sandbox_main.c",
+  "libbubble/access_policy.c",
+  "libbubble/hw_detect.c",
+  "libbubble/http_proxy.c",
+  "libbubble/landlock.c",
+  "libbubble/limits.c",
+  "libbubble/log.c",
+  "libbubble/meson.build",
+  "libbubble/overfs.c",
+  "libbubble/scheduler.c",
+  "libbubble/sandbox.c",
+  "libbubble/tests/access_policy_test.c",
+  "libbubble/tests/http_proxy_test.c",
+  "libbubble/tests/hw_test.c",
+  "libbubble/tests/landlock_test.c",
+  "libbubble/tests/limits_test.c",
+  "libbubble/tests/log_test.c",
+  "libbubble/tests/meson.build",
+  "libbubble/tests/overfs_test.c",
+  "libbubble/tests/sandbox_test.c",
+  "libbubble/tests/scheduler_test.c",
+  "libbubble/tests/test_common.h",
 ]
-"share/bubblehub/libbubblehub/include/bubblehub" = [
-  "libbubblehub/include/bubblehub/access_policy.h",
-  "libbubblehub/include/bubblehub/hw.h",
-  "libbubblehub/include/bubblehub/http_proxy.h",
-  "libbubblehub/include/bubblehub/limits.h",
-  "libbubblehub/include/bubblehub/log.h",
-  "libbubblehub/include/bubblehub/overfs.h",
-  "libbubblehub/include/bubblehub/scheduler.h",
-  "libbubblehub/include/bubblehub/sandbox.h",
+"share/bubblehub/libbubble/include/bubblehub" = [
+  "libbubble/include/bubblehub/access_policy.h",
+  "libbubble/include/bubblehub/hw.h",
+  "libbubble/include/bubblehub/http_proxy.h",
+  "libbubble/include/bubblehub/limits.h",
+  "libbubble/include/bubblehub/log.h",
+  "libbubble/include/bubblehub/overfs.h",
+  "libbubble/include/bubblehub/scheduler.h",
+  "libbubble/include/bubblehub/sandbox.h",
 ]
 "share/bubblehub/scripts" = [
   "scripts/install-app-deps.sh",

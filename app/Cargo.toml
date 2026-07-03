@@ -1,7 +1,7 @@
 [package]
-name = "bubblehub-control-center"
+name = "bubblehub"
 version = "0.1.0"
-description = "BubbleHub Control Center desktop app"
+description = "BubbleHub desktop app"
 authors = ["BubbleHub"]
 license = "MIT"
 edition = "2021"

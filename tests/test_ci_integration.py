@@ -79,7 +79,7 @@ def integration_env(tmp_path_factory: pytest.TempPathFactory) -> dict[str, str]:
     env = _integration_env(tmp_path_factory.mktemp("bubblehub-integration"))
     _run(["bash", str(ROOT / "scripts/ci/write-ci-model-config.sh")], env=env, timeout=30)
     _run(
-        ["bubblehub", "prompt", "--text", "Reply with ok.", "--speciality", "default-instruct"],
+        ["bubble", "prompt", "--text", "Reply with ok.", "--speciality", "default-instruct"],
         env=env,
         timeout=180,
     )
@@ -112,7 +112,7 @@ def _failure_output(output: str) -> str:
 def _require_integration_runtime() -> None:
     if not _integration_enabled():
         pytest.skip("set BUBBLEHUB_RUN_INTEGRATION=1 to run real local-inference integration tests")
-    for binary in ("bubblehub", "llama-server"):
+    for binary in ("bubble", "llama-server"):
         if shutil.which(binary) is None:
             pytest.skip(f"{binary} is not installed")
 
@@ -181,7 +181,7 @@ def _run_basic_agent(root_dir: Path, *, env: dict[str, str], force_new_sandbox: 
     if not agent_path.exists():
         shutil.copy2(ROOT / "examples" / "basic" / "basic_agent.py", agent_path)
     command = [
-        "bubblehub",
+        "bubble",
         "run",
         "--memory",
         "4G",
@@ -214,7 +214,7 @@ def _run_rootfs_shell(
 ) -> subprocess.CompletedProcess[str]:
     root_dir.mkdir(parents=True, exist_ok=True)
     command = [
-        "bubblehub",
+        "bubble",
         "run",
         "--memory",
         "4G",
@@ -278,7 +278,7 @@ def _run_mcp_agent(
     extra_args: list[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     command = [
-        "bubblehub",
+        "bubble",
         "run",
         "--memory",
         "4G",
@@ -368,7 +368,7 @@ def _openclaw_shell_command(openclaw_root: Path, args: list[str], *, allow_netwo
 
 def _openclaw_shell_script_command(openclaw_root: Path, script: str, *, allow_network: bool = False) -> list[str]:
     command = [
-        "bubblehub",
+        "bubble",
         "run",
         "--memory",
         "4G",
@@ -588,10 +588,10 @@ def test_bubblehub_cli_runs_inside_ubuntu_rootfs_sandbox(
         env=integration_env,
         script=(
             "set -eu; "
-            'help_output="$(bubblehub --help)"; '
+            'help_output="$(bubble --help)"; '
             "printf '%s\\n' \"$help_output\"; "
             "printf '%s\\n' \"$help_output\" | grep -q 'BubbleHub local agent runtime'; "
-            "bubblehub --version | grep -q '^bubblehub '"
+            "bubble --version | grep -q '^bubble '"
         ),
     )
 
@@ -619,7 +619,7 @@ def test_internal_tool_web_access_is_denied_by_proxy(
 
     result = _run(
         [
-            "bubblehub",
+            "bubble",
             "run",
             "--memory",
             "4G",

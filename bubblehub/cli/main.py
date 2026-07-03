@@ -38,7 +38,7 @@ RUN_CONTEXT = {
 }
 
 app = typer.Typer(
-    name="bubblehub",
+    name="bubble",
     help=(
         "BubbleHub local agent runtime, model scheduler, and sandbox CLI.\n\n"
         "Global options (may appear before or after any command):\n"
@@ -75,7 +75,7 @@ app.add_typer(specialties_app, name="specialties")
 
 def _version_callback(value: bool) -> None:
     if value:
-        typer.echo(f"bubblehub {__version__}")
+        typer.echo(f"bubble {__version__}")
         raise typer.Exit()
 
 
@@ -93,7 +93,7 @@ def main(
     """BubbleHub MVP command surface."""
 
     ctx.obj = {"log_level": os.environ.get("BUBBLEHUB_LOG_LEVEL", "error")}
-    log_debug("bubblehub cli initialized", f"version={__version__} log_level={ctx.obj['log_level']}")
+    log_debug("bubble cli initialized", f"version={__version__} log_level={ctx.obj['log_level']}")
 
 
 @models_app.callback(invoke_without_command=True)
@@ -110,7 +110,7 @@ def models(
 
     if ctx.invoked_subcommand is not None:
         return
-    _deny_in_sandbox("bubblehub models")
+    _deny_in_sandbox("bubble models")
     _choose_base_model(speciality)
 
 
@@ -125,10 +125,10 @@ def models_setup(
 ) -> None:
     """Choose the default base model when one has not been configured yet."""
 
-    _deny_in_sandbox("bubblehub models setup")
+    _deny_in_sandbox("bubble models setup")
     if run_install_base_model_setup(speciality):
         return
-    typer.echo("Base model setup skipped. Choose one later with: bubblehub models")
+    typer.echo("Base model setup skipped. Choose one later with: bubble models")
 
 
 @models_app.command("list")
@@ -183,7 +183,7 @@ def models_list(
 def models_stop() -> None:
     """Stop all currently loaded warm model backends."""
 
-    _deny_in_sandbox("bubblehub models stop")
+    _deny_in_sandbox("bubble models stop")
     client = SchedulerClient.local()
     snapshot = client.status_snapshot()
     models = snapshot.get("models", [])

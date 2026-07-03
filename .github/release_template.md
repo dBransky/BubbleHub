@@ -49,9 +49,9 @@ curl -LO https://bubblehub.ai/download/latest/BubbleHub-X.Y.Z-x64.deb
 sudo apt install ./BubbleHub-X.Y.Z-x64.deb
 ```
 
-Open the BubbleHub Control Center Tauri desktop app after installing:
+Open the BubbleHub desktop app after installing:
 ```bash
-bubblehub app
+bubblehub
 ```
 
 Windows PowerShell installer:
@@ -59,7 +59,7 @@ Windows PowerShell installer:
 irm https://bubblehub.ai/install.ps1 | iex
 ```
 
-The Windows installer uses WSL for the Linux runtime and creates BubbleHub Control Center Start Menu and Desktop shortcuts that launch the desktop app.
+The Windows installer uses WSL for the Linux runtime and creates BubbleHub Start Menu and Desktop shortcuts that launch the desktop app.
 
 Windows `.exe` bootstrapper:
 ```powershell

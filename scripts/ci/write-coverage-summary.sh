@@ -106,12 +106,12 @@ lines = [
     "",
     "| Component | Line coverage | Threshold | Status |",
     "|-----------|---------------|-----------|--------|",
-    f"| C (`libbubblehub`) | {percent(c_total)} | {threshold:.0f}% | {status(c_total)} |",
+    f"| C (`libbubble`) | {percent(c_total)} | {threshold:.0f}% | {status(c_total)} |",
     f"| Python (`bubblehub`) | {percent(python_total)} | {threshold:.0f}% | {status(python_total)} |",
     "",
 ]
 
-lines.extend(file_table("C (`libbubblehub`) Per File", c_files))
+lines.extend(file_table("C (`libbubble`) Per File", c_files))
 lines.append("")
 lines.extend(file_table("Python (`bubblehub`) Per File", python_files))
 lines.append("")
