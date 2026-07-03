@@ -2,8 +2,14 @@ $ErrorActionPreference = "Stop"
 
 $Repo = if ($env:BUBBLEHUB_REPO) { $env:BUBBLEHUB_REPO } else { "bublhub/bubblehub" }
 $Version = if ($env:BUBBLEHUB_VERSION) { $env:BUBBLEHUB_VERSION } else { "latest" }
+$ReleaseBaseUrl = if ($env:BUBBLEHUB_RELEASE_BASE_URL) { $env:BUBBLEHUB_RELEASE_BASE_URL.TrimEnd("/") } else { "" }
+$WslDistro = if ($env:BUBBLEHUB_WSL_DISTRO) { $env:BUBBLEHUB_WSL_DISTRO } else { "" }
 
-if ($Version -eq "latest") {
+if ($env:BUBBLEHUB_INSTALL_SH_URL) {
+    $InstallUrl = $env:BUBBLEHUB_INSTALL_SH_URL
+} elseif ($ReleaseBaseUrl) {
+    $InstallUrl = "$ReleaseBaseUrl/$Version/install.sh"
+} elseif ($Version -eq "latest") {
     $InstallUrl = "https://github.com/$Repo/releases/latest/download/install.sh"
 } else {
     $InstallUrl = "https://github.com/$Repo/releases/download/$Version/install.sh"
@@ -12,6 +18,21 @@ if ($Version -eq "latest") {
 function ConvertTo-BashSingleQuoted {
     param([string]$Value)
     return "'" + $Value.Replace("'", "'\''") + "'"
+}
+
+function ConvertTo-PowerShellSingleQuoted {
+    param([string]$Value)
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function Invoke-WslBash {
+    param([string]$Command)
+
+    if ($WslDistro) {
+        & wsl.exe -d $WslDistro bash -lc $Command
+    } else {
+        & wsl.exe bash -lc $Command
+    }
 }
 
 function New-ControlCenterShortcut {
@@ -35,7 +56,10 @@ function New-ControlCenterShortcut {
 }
 
 function Install-WindowsLaunchers {
-    param([bool]$InstallDesktopShortcut)
+    param(
+        [bool]$InstallDesktopShortcut,
+        [string]$WslDistroName = ""
+    )
 
     $InstallRoot = Join-Path $env:LOCALAPPDATA "BubbleHub"
     $Programs = [Environment]::GetFolderPath("Programs")
@@ -45,19 +69,33 @@ function Install-WindowsLaunchers {
 
     if ($InstallDesktopShortcut) {
         $LauncherScript = Join-Path $InstallRoot "bubblehub-control-center.ps1"
-        @'
-$ErrorActionPreference = "Stop"
-$Port = if ($env:BUBBLEHUB_APP_PORT) { $env:BUBBLEHUB_APP_PORT } else { "8010" }
-$Command = "BUBBLEHUB_WINDOWS_APP=1 bubblehub app --host 127.0.0.1 --port $Port"
-wsl.exe bash -lc $Command
-'@ | Set-Content -Path $LauncherScript -Encoding UTF8
+        $QuotedWslDistro = ConvertTo-PowerShellSingleQuoted $WslDistroName
+        @"
+`$ErrorActionPreference = "Stop"
+`$Port = if (`$env:BUBBLEHUB_APP_PORT) { `$env:BUBBLEHUB_APP_PORT } else { "8010" }
+`$Command = "BUBBLEHUB_WINDOWS_APP=1 bubblehub app --host 127.0.0.1 --port `$Port"
+`$WslDistro = $QuotedWslDistro
+if (`$WslDistro) {
+    & wsl.exe -d `$WslDistro bash -lc `$Command
+} else {
+    & wsl.exe bash -lc `$Command
+}
+"@ | Set-Content -Path $LauncherScript -Encoding UTF8
     }
 
     $CmdLauncher = Join-Path $InstallRoot "bubblehub.cmd"
-    @'
+    if ($WslDistroName) {
+        $EscapedDistro = $WslDistroName.Replace('"', '\"')
+        @"
+@echo off
+wsl.exe -d "$EscapedDistro" bash -lc "bubblehub %*"
+"@ | Set-Content -Path $CmdLauncher -Encoding ASCII
+    } else {
+        @'
 @echo off
 wsl.exe bash -lc "bubblehub %*"
 '@ | Set-Content -Path $CmdLauncher -Encoding ASCII
+    }
 
     if ($InstallDesktopShortcut) {
         $Shell = New-Object -ComObject WScript.Shell
@@ -85,6 +123,14 @@ function Assert-WslReady {
         throw "BubbleHub uses WSL on Windows. Install WSL with: wsl --install -d Ubuntu"
     }
 
+    if ($WslDistro) {
+        wsl.exe -d $WslDistro true
+        if ($LASTEXITCODE -ne 0) {
+            throw "WSL distro '$WslDistro' is not available. Install or import it before running the BubbleHub installer."
+        }
+        return
+    }
+
     $Distros = @(wsl.exe --list --quiet 2>$null | Where-Object { $_.Trim() })
     if ($Distros.Count -eq 0) {
         if ($env:BUBBLEHUB_INSTALL_WSL -eq "1") {
@@ -108,18 +154,37 @@ if ($env:OS -eq "Windows_NT") {
     $QuotedUrl = ConvertTo-BashSingleQuoted $InstallUrl
     $QuotedRepo = ConvertTo-BashSingleQuoted $Repo
     $QuotedVersion = ConvertTo-BashSingleQuoted $Version
+    $ReleaseBaseEnv = ""
+    if ($ReleaseBaseUrl) {
+        $QuotedReleaseBase = ConvertTo-BashSingleQuoted $ReleaseBaseUrl
+        $ReleaseBaseEnv = "BUBBLEHUB_RELEASE_BASE_URL=$QuotedReleaseBase "
+    }
+    $AssetNameEnv = ""
+    if ($env:BUBBLEHUB_ASSET_NAME) {
+        $QuotedAssetName = ConvertTo-BashSingleQuoted $env:BUBBLEHUB_ASSET_NAME
+        $AssetNameEnv = "BUBBLEHUB_ASSET_NAME=$QuotedAssetName "
+    }
     $InstallAppEnv = ""
     if ($env:BUBBLEHUB_INSTALL_APP) {
         $QuotedInstallApp = ConvertTo-BashSingleQuoted $env:BUBBLEHUB_INSTALL_APP
         $InstallAppEnv = "BUBBLEHUB_INSTALL_APP=$QuotedInstallApp "
     }
+    $AptEnv = ""
+    if ($env:DEBIAN_FRONTEND) {
+        $QuotedDebianFrontend = ConvertTo-BashSingleQuoted $env:DEBIAN_FRONTEND
+        $AptEnv += "DEBIAN_FRONTEND=$QuotedDebianFrontend "
+    }
+    if ($env:TZ) {
+        $QuotedTimezone = ConvertTo-BashSingleQuoted $env:TZ
+        $AptEnv += "TZ=$QuotedTimezone "
+    }
     $SkipModelSetupEnv = "BUBBLEHUB_SKIP_MODEL_SETUP=1 "
-    $Command = "tmp=`$(mktemp) && curl -fsSL $QuotedUrl -o `$tmp && ${SkipModelSetupEnv}${InstallAppEnv}BUBBLEHUB_REPO=$QuotedRepo BUBBLEHUB_VERSION=$QuotedVersion bash `$tmp"
-    wsl.exe bash -lc $Command
+    $Command = "tmp=`$(mktemp) && curl -fsSL $QuotedUrl -o `$tmp && ${AptEnv}${SkipModelSetupEnv}${InstallAppEnv}${ReleaseBaseEnv}${AssetNameEnv}BUBBLEHUB_REPO=$QuotedRepo BUBBLEHUB_VERSION=$QuotedVersion bash `$tmp"
+    Invoke-WslBash $Command
     if ($LASTEXITCODE -eq 0) {
-        wsl.exe bash -lc "command -v bubblehub-control-center >/dev/null 2>&1"
+        Invoke-WslBash "command -v bubblehub-control-center >/dev/null 2>&1"
         $DesktopInstalled = ($LASTEXITCODE -eq 0)
-        Install-WindowsLaunchers -InstallDesktopShortcut:$DesktopInstalled
+        Install-WindowsLaunchers -InstallDesktopShortcut:$DesktopInstalled -WslDistroName $WslDistro
     }
     exit $LASTEXITCODE
 }

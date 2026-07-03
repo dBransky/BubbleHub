@@ -6,10 +6,13 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 0
 fi
 
+export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
+export TZ="${TZ:-Etc/UTC}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-sudo apt-get update
-sudo apt-get install -y \
+sudo -E apt-get update
+sudo -E apt-get install -y \
   libatk1.0-dev \
   libayatana-appindicator3-dev \
   libcairo2-dev \
@@ -24,6 +27,6 @@ WEBKIT_GTK_PACKAGE="libwebkit2gtk-4.1-dev"
 if ! apt-cache show "$WEBKIT_GTK_PACKAGE" >/dev/null 2>&1; then
   WEBKIT_GTK_PACKAGE="libwebkit2gtk-4.0-dev"
 fi
-sudo apt-get install -y "$WEBKIT_GTK_PACKAGE"
+sudo -E apt-get install -y "$WEBKIT_GTK_PACKAGE"
 
 bash "$SCRIPT_DIR/install-rust.sh"

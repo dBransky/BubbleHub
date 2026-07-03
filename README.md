@@ -156,6 +156,15 @@ Push a `v*` tag. The release workflow runs unit tests, runs local-inference inte
 - `container-image.txt`
 - `SHA256SUMS`
 
+CI also builds synthetic release assets for pull requests and validates installation in parallel before the branch is considered release-ready:
+
+- Linux `curl | bash` install from a clean Ubuntu container
+- Linux `apt install ./BubbleHub-<version>-x64.deb` from a separate clean Ubuntu container
+- Windows PowerShell install on a self-hosted Windows desktop runner
+- Windows `.exe` bootstrapper install on a separate self-hosted Windows desktop runner
+
+Each smoke test installs a previous synthetic version, verifies `bubblehub --version` and the Control Center `/health` response, installs the current synthetic version over it, and verifies the runtime reports the updated version. The Windows release-install jobs require `[self-hosted, Windows, X64]` runners with an interactive desktop, WSL2/WSLg, Python, a clean Ubuntu base distro, and permission to import disposable WSL distros.
+
 For Cursor-written release notes, ask Cursor to use the BubbleHub release-notes skill before tagging.
 It writes `.github/releases/<tag>.md` from commits since the previous release, and the release workflow uses that file when present.
 

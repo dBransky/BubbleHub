@@ -16,11 +16,12 @@ class HfDownloader:
 
     def ensure_model(self, model: ModelSpec) -> Path:
         target_dir = self.cache_dir / "models" / model.name
+        validate_cache = os.environ.get("BUBBLEHUB_VALIDATE_MODEL_CACHE") == "1"
         if model.filename:
             target_file = target_dir / model.filename
-            if target_file.exists():
+            if target_file.exists() and not validate_cache:
                 return target_file
-        elif target_dir.exists() and any(target_dir.iterdir()):
+        elif target_dir.exists() and any(target_dir.iterdir()) and not validate_cache:
             return target_dir
 
         try:

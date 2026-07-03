@@ -22,6 +22,7 @@ pytestmark = pytest.mark.integration
 ROOT = Path(__file__).resolve().parents[1]
 OPENCLAW_NODE_VERSION = "22.19.0"
 OPENCLAW_PNPM_VERSION = "11.2.2"
+OPENCLAW_NPM_SPEC = "openclaw@2026.6.11"
 
 
 def _integration_enabled() -> bool:
@@ -44,6 +45,7 @@ def _integration_env(tmp_path: Path) -> dict[str, str]:
     env.setdefault("BUBBLEHUB_STATE_DIR", str(tmp_path / "state"))
     env.setdefault("BUBBLEHUB_LLAMA_CTX_SIZE", "512")
     env.setdefault("BUBBLEHUB_MAX_OUTPUT_TOKENS", "32")
+    env.setdefault("BUBBLEHUB_VALIDATE_MODEL_CACHE", "1")
     env.setdefault("NO_PROXY", "127.0.0.1,localhost")
     env.setdefault("no_proxy", "127.0.0.1,localhost")
     Path(env["HOME"]).mkdir(parents=True, exist_ok=True)
@@ -95,8 +97,16 @@ def _run(command: list[str], *, cwd: Path = ROOT, env: dict[str, str], timeout: 
         timeout=timeout,
         check=False,
     )
-    assert result.returncode == 0, result.stdout
+    assert result.returncode == 0, _failure_output(result.stdout)
     return result
+
+
+def _failure_output(output: str) -> str:
+    parts = [output]
+    for pattern in ("bubblehub-llama-native-*.log", "bubblehub-vllm-native-*.log"):
+        for log_path in sorted(Path("/tmp").glob(pattern)):
+            parts.append(f"\n--- {log_path} ---\n{log_path.read_text(encoding='utf-8', errors='replace')}")
+    return "".join(parts)
 
 
 def _require_integration_runtime() -> None:
@@ -311,7 +321,27 @@ def _mcp_http_server() -> Iterator[str]:
 
 
 def _openclaw_setup_command(openclaw_root: Path) -> list[str]:
-    return _openclaw_shell_command(openclaw_root, ["setup"], allow_network=True)
+    return _openclaw_shell_command(
+        openclaw_root,
+        [
+            "setup",
+            "--non-interactive",
+            "--accept-risk",
+            "--flow",
+            "quickstart",
+            "--mode",
+            "local",
+            "--auth-choice",
+            "skip",
+            "--no-install-daemon",
+            "--skip-channels",
+            "--skip-skills",
+            "--skip-search",
+            "--skip-health",
+            "--skip-ui",
+        ],
+        allow_network=True,
+    )
 
 
 def _openclaw_install_toolchain_command(openclaw_root: Path) -> list[str]:
@@ -405,7 +435,7 @@ def _openclaw_toolchain_script() -> str:
             "fi",
             "node --version",
             "npm --version",
-            "npm install -g openclaw@latest",
+            f"npm install -g {OPENCLAW_NPM_SPEC}",
             'corepack enable --install-directory "$NPM_CONFIG_PREFIX/bin"',
             f"corepack prepare pnpm@{OPENCLAW_PNPM_VERSION} --activate",
             "pnpm --version",
@@ -805,7 +835,7 @@ def test_sandbox_installs_openclaw_with_nvm_and_npm(
             f"nvm use {OPENCLAW_NODE_VERSION}",
             "node --version",
             "npm --version",
-            "npm install -g openclaw@latest",
+            f"npm install -g {OPENCLAW_NPM_SPEC}",
             "command -v openclaw",
             "openclaw --version >/dev/null",
         ]

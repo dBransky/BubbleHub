@@ -78,7 +78,7 @@ jobs:
 
   integration-tests:
     runs-on: ubuntu-22.04
-    needs: unit-tests
+    needs: lint
     timeout-minutes: 60
     env:
       BUBBLEHUB_RUN_INTEGRATION: "1"
@@ -180,3 +180,73 @@ jobs:
             rm -rf /cache/bubblehub/integration-workspaces
           mkdir -p .bubblehub-cache/integration-workspaces
           chmod -R a+rwX .bubblehub-cache/integration-workspaces
+
+  release-smoke-assets:
+    runs-on: ubuntu-22.04
+    needs:
+      - unit-tests
+      - integration-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Install release packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis
+
+      - name: Build release install smoke assets
+        env:
+          BUBBLEHUB_REPO: ${{ github.repository }}
+        run: bash scripts/ci/build-release-smoke-assets.sh .ci-artifacts/release-smoke-assets
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-assets
+          path: .ci-artifacts/release-smoke-assets/
+
+  release-smoke-linux:
+    runs-on: ubuntu-22.04
+    needs: release-smoke-assets
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [curl, apt]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-smoke-assets
+          path: release-smoke-assets
+
+      - name: Validate Linux ${{ matrix.method }} release installation
+        run: bash scripts/ci/run-linux-release-install-smoke.sh "${{ matrix.method }}" release-smoke-assets
+
+  release-smoke-windows:
+    # Self-hosted Windows runners for this job must have an interactive desktop,
+    # WSL2/WSLg, a clean Ubuntu base distro, Python, and permission to import
+    # disposable WSL distros for the installation smoke test.
+    runs-on: [self-hosted, Windows, X64]
+    needs: release-smoke-assets
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [ps1, exe]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-smoke-assets
+          path: release-smoke-assets
+
+      - name: Validate Windows ${{ matrix.method }} release installation
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/ci/run-windows-release-install-smoke.ps1 -Method "${{ matrix.method }}" -AssetsDir release-smoke-assets

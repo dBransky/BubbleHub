@@ -1,0 +1,22 @@
+models:
+  - name: ci-tiny-instruct
+    flavor: llama
+    capability: instruct
+    tier: tiny
+    backend: llama
+    repo_id: tensorblock/TinyLlama-1.1B-Chat-v1.0-GGUF
+    filename: TinyLlama-1.1B-Chat-v1.0-Q2_K.gguf
+    ram_gb: 3
+    vram_gb: 0
+    context_tokens: 512
+specialties:
+  default-instruct:
+    capability: instruct
+    model: ci-tiny-instruct
+scheduler:
+  ram_limit_gb: 4
+  vram_limit_gb: 0
+inference:
+  host: 127.0.0.1
+  port: 8000
+  default_specialty: default-instruct

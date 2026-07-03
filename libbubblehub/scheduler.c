@@ -15,6 +15,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -1014,6 +1015,14 @@ static int allocate_local_port(void) {
 static int wait_for_backend_health(pid_t pid, int port, int timeout_seconds) {
     time_t deadline = time(NULL) + timeout_seconds;
     while (time(NULL) < deadline) {
+        int status = 0;
+        pid_t exited = waitpid(pid, &status, WNOHANG);
+        if (exited == pid) {
+            return 0;
+        }
+        if (exited < 0 && errno != EINTR) {
+            return 0;
+        }
         if (kill(pid, 0) != 0 && errno != EPERM) {
             return 0;
         }

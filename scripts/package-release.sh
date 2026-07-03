@@ -8,8 +8,12 @@ RUNTIME_IMAGE="${BUBBLEHUB_RUNTIME_IMAGE:-ghcr.io/${REPO}:${VERSION_TAG}}"
 VERSION="${VERSION_TAG#v}"
 PACKAGE_NAME="BubbleHub-${VERSION}-x64"
 TMP_DIR="$(mktemp -d)"
+DEB_CONTAINER_ID=""
 
 cleanup() {
+  if [[ -n "$DEB_CONTAINER_ID" ]]; then
+    docker rm -f "$DEB_CONTAINER_ID" >/dev/null 2>&1 || true
+  fi
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
@@ -18,7 +22,6 @@ mkdir -p "$OUTPUT_DIR"
 
 build_deb() {
   local pkg_root="$TMP_DIR/deb-root"
-  local container_id
 
   if ! command -v docker >/dev/null 2>&1; then
     echo "docker is required to build the BubbleHub .deb package." >&2
@@ -26,8 +29,7 @@ build_deb() {
   fi
 
   echo "Building ${PACKAGE_NAME}.deb from ${RUNTIME_IMAGE}..."
-  container_id="$(docker create "$RUNTIME_IMAGE")"
-  trap 'docker rm -f "$container_id" >/dev/null 2>&1 || true; cleanup' EXIT
+  DEB_CONTAINER_ID="$(docker create "$RUNTIME_IMAGE")"
 
   mkdir -p \
     "$pkg_root/DEBIAN" \
@@ -38,13 +40,21 @@ build_deb() {
     "$pkg_root/usr/share/icons/hicolor/scalable/apps" \
     "$pkg_root/usr/share/icons/hicolor/512x512/apps"
 
-  docker cp "$container_id:/opt/bubblehub" "$pkg_root/opt/bubblehub"
+  docker cp "$DEB_CONTAINER_ID:/opt/bubblehub" - | tar \
+    --no-same-owner \
+    --no-same-permissions \
+    --exclude='bubblehub/rootfs/ubuntu-26.04/dev/*' \
+    -C "$pkg_root/opt" \
+    -xf -
+  mkdir -p "$pkg_root/opt/bubblehub/rootfs/ubuntu-26.04/dev"
   for binary in bubblehub bubblehub-node bubblehub-sandbox bubblehub-control-center llama-server; do
-    docker cp "$container_id:/usr/local/bin/${binary}" "$pkg_root/usr/bin/${binary}"
+    docker cp "$DEB_CONTAINER_ID:/usr/local/bin/${binary}" - | tar --no-same-owner --no-same-permissions -C "$pkg_root/usr/bin" -xf -
   done
-  docker cp "$container_id:/usr/local/lib/x86_64-linux-gnu/." "$pkg_root/usr/lib/x86_64-linux-gnu/"
-  docker rm -f "$container_id" >/dev/null
-  trap cleanup EXIT
+  chmod 0755 "$pkg_root/usr/bin"/bubblehub "$pkg_root/usr/bin"/bubblehub-node "$pkg_root/usr/bin"/bubblehub-control-center "$pkg_root/usr/bin"/llama-server
+  chmod 4755 "$pkg_root/usr/bin/bubblehub-sandbox"
+  docker cp "$DEB_CONTAINER_ID:/usr/local/lib/x86_64-linux-gnu/." - | tar --no-same-owner --no-same-permissions -C "$pkg_root/usr/lib/x86_64-linux-gnu" -xf -
+  docker rm -f "$DEB_CONTAINER_ID" >/dev/null
+  DEB_CONTAINER_ID=""
 
   cat > "$pkg_root/DEBIAN/control" <<EOF
 Package: bubblehub
@@ -96,7 +106,7 @@ EOF
 
 build_windows_exe() {
   local nsis_script="$TMP_DIR/bubblehub-installer.nsi"
-  local install_url="https://github.com/${REPO}/releases/download/${VERSION_TAG}/install.ps1"
+  local install_url="${BUBBLEHUB_INSTALL_PS1_URL:-https://github.com/${REPO}/releases/download/${VERSION_TAG}/install.ps1}"
 
   if ! command -v makensis >/dev/null 2>&1; then
     echo "makensis is required to build ${PACKAGE_NAME}.exe. Install the nsis package." >&2

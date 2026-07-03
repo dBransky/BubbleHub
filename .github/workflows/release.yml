@@ -64,7 +64,6 @@ jobs:
 
   integration-tests:
     runs-on: ubuntu-22.04
-    needs: unit-tests
     timeout-minutes: 60
     env:
       BUBBLEHUB_RUN_INTEGRATION: "1"
@@ -169,7 +168,9 @@ jobs:
 
   publish-runtime-image:
     runs-on: ubuntu-22.04
-    needs: integration-tests
+    needs:
+      - unit-tests
+      - integration-tests
     steps:
       - uses: actions/checkout@v4
 
@@ -370,9 +371,86 @@ jobs:
           generate_release_notes: true
           name: BubbleHub ${{ github.ref_name }}
 
-  discord-announcement:
+  release-smoke-assets:
     runs-on: ubuntu-22.04
     needs: github-release
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: github-release-assets
+          path: current-release-assets
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Install release packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nsis
+
+      - name: Build release install smoke assets
+        env:
+          BUBBLEHUB_REPO: ${{ github.repository }}
+          BUBBLEHUB_CURRENT_ASSETS_DIR: ${{ github.workspace }}/current-release-assets
+          BUBBLEHUB_PREVIOUS_VERSION_TAG: v0.0.0+release.smoke.1
+        run: bash scripts/ci/build-release-smoke-assets.sh .ci-artifacts/release-smoke-assets
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-assets
+          path: .ci-artifacts/release-smoke-assets/
+
+  release-smoke-linux:
+    runs-on: ubuntu-22.04
+    needs: release-smoke-assets
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [curl, apt]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-smoke-assets
+          path: release-smoke-assets
+
+      - name: Validate Linux ${{ matrix.method }} release installation
+        run: bash scripts/ci/run-linux-release-install-smoke.sh "${{ matrix.method }}" release-smoke-assets
+
+  release-smoke-windows:
+    # Self-hosted Windows runners for this job must have an interactive desktop,
+    # WSL2/WSLg, a clean Ubuntu base distro, Python, and permission to import
+    # disposable WSL distros for the installation smoke test.
+    runs-on: [self-hosted, Windows, X64]
+    needs: release-smoke-assets
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [ps1, exe]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-smoke-assets
+          path: release-smoke-assets
+
+      - name: Validate Windows ${{ matrix.method }} release installation
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/ci/run-windows-release-install-smoke.ps1 -Method "${{ matrix.method }}" -AssetsDir release-smoke-assets
+
+  discord-announcement:
+    runs-on: ubuntu-22.04
+    needs:
+      - release-smoke-linux
+      - release-smoke-windows
     if: startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Load GitHub Release

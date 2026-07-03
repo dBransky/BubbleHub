@@ -4,6 +4,7 @@ set -euo pipefail
 REPO="${BUBBLEHUB_REPO:-bublhub/bubblehub}"
 VERSION="${BUBBLEHUB_VERSION:-latest}"
 ASSET_NAME="${BUBBLEHUB_ASSET_NAME:-bubblehub-source.tar.gz}"
+RELEASE_BASE_URL="${BUBBLEHUB_RELEASE_BASE_URL:-}"
 TMP_DIR="$(mktemp -d)"
 
 cleanup() {
@@ -26,7 +27,9 @@ if ! command -v tar >/dev/null 2>&1; then
   exit 1
 fi
 
-if [[ "$VERSION" == "latest" ]]; then
+if [[ -n "$RELEASE_BASE_URL" ]]; then
+  RELEASE_URL="${RELEASE_BASE_URL%/}/${VERSION}/${ASSET_NAME}"
+elif [[ "$VERSION" == "latest" ]]; then
   RELEASE_URL="https://github.com/${REPO}/releases/latest/download/${ASSET_NAME}"
 else
   RELEASE_URL="https://github.com/${REPO}/releases/download/${VERSION}/${ASSET_NAME}"

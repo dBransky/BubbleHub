@@ -6,18 +6,23 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 0
 fi
 
+export DEBIAN_FRONTEND="${DEBIAN_FRONTEND:-noninteractive}"
+export TZ="${TZ:-Etc/UTC}"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 . "$SCRIPT_DIR/install-ui.sh"
 BUBBLEHUB_INSTALL_APP="$(bubblehub_resolve_desktop_app_choice)"
 export BUBBLEHUB_INSTALL_APP
-if [[ "$BUBBLEHUB_INSTALL_APP" == "1" ]]; then
+if [[ "${BUBBLEHUB_SKIP_TAURI:-0}" == "1" ]]; then
+  export BUBBLEHUB_SKIP_TAURI=1
+elif [[ "$BUBBLEHUB_INSTALL_APP" == "1" ]]; then
   export BUBBLEHUB_SKIP_TAURI=0
 else
   export BUBBLEHUB_SKIP_TAURI=1
 fi
 
-sudo apt-get update
-sudo apt-get install -y \
+sudo -E apt-get update
+sudo -E apt-get install -y \
   build-essential \
   cmake \
   curl \
@@ -35,6 +40,12 @@ sudo apt-get install -y \
 
 if [[ "${BUBBLEHUB_INSTALL_APP:-1}" != "0" && "${BUBBLEHUB_SKIP_TAURI:-0}" != "1" ]]; then
   bash "$SCRIPT_DIR/install-app-deps.sh"
+fi
+
+if [[ "${BUBBLEHUB_SKIP_MODEL_SETUP:-0}" == "1" ]]; then
+  echo "Skipping llama.cpp server setup because BUBBLEHUB_SKIP_MODEL_SETUP=1."
+  echo "BubbleHub GPU mode setup skipped."
+  exit 0
 fi
 
 LLAMA_CPP_REPO="${LLAMA_CPP_REPO:-https://github.com/ggml-org/llama.cpp.git}"

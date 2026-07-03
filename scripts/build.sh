@@ -7,7 +7,9 @@ cd "$ROOT"
 . "$ROOT/scripts/install-ui.sh"
 BUBBLEHUB_INSTALL_APP="$(bubblehub_resolve_desktop_app_choice)"
 export BUBBLEHUB_INSTALL_APP
-if [[ "$BUBBLEHUB_INSTALL_APP" == "1" ]]; then
+if [[ "${BUBBLEHUB_SKIP_TAURI:-0}" == "1" ]]; then
+  export BUBBLEHUB_SKIP_TAURI=1
+elif [[ "$BUBBLEHUB_INSTALL_APP" == "1" ]]; then
   export BUBBLEHUB_SKIP_TAURI=0
 else
   export BUBBLEHUB_SKIP_TAURI=1
