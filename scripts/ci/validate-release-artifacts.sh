@@ -22,21 +22,29 @@ CHECKSUMS="$ASSETS_DIR/SHA256SUMS"
 CONTAINER_IMAGE="$ASSETS_DIR/container-image.txt"
 shopt -s nullglob
 DEBS=("$ASSETS_DIR"/BubbleHub-*-x64.deb)
-EXES=("$ASSETS_DIR"/BubbleHub-*-x64.exe)
+ALL_EXES=("$ASSETS_DIR"/BubbleHub-*-x64.exe)
+WINDOWS_APPS=("$ASSETS_DIR"/BubbleHub-*-control-center-x64.exe)
 shopt -u nullglob
+EXES=()
+for exe in "${ALL_EXES[@]}"; do
+  if [[ "$exe" != *-control-center-x64.exe ]]; then
+    EXES+=("$exe")
+  fi
+done
 
 require_file "$TARBALL"
 require_file "$INSTALL_SH"
 require_file "$INSTALL_PS1"
 require_file "$CHECKSUMS"
 require_file "$CONTAINER_IMAGE"
-if [[ ${#DEBS[@]} -eq 0 || ${#EXES[@]} -eq 0 ]]; then
-  echo "Expected BubbleHub-*-x64.deb and BubbleHub-*-x64.exe in ${ASSETS_DIR}" >&2
+if [[ ${#DEBS[@]} -eq 0 || ${#EXES[@]} -eq 0 || ${#WINDOWS_APPS[@]} -eq 0 ]]; then
+  echo "Expected BubbleHub-*-x64.deb, BubbleHub-*-x64.exe, and BubbleHub-*-control-center-x64.exe in ${ASSETS_DIR}" >&2
   exit 1
 fi
 
 DEB="${DEBS[0]}"
 EXE="${EXES[0]}"
+WINDOWS_APP="${WINDOWS_APPS[0]}"
 
 echo "Checking repository scripts..."
 while IFS= read -r script; do
@@ -186,12 +194,35 @@ if ! file "$EXE" | grep -Eiq 'PE32|PE32\+'; then
   file "$EXE" >&2 || true
   exit 1
 fi
+EXE_FILE_INFO="$(file "$EXE")"
+if ! grep -Eiq 'PE32\+.*x86-64|PE32\+.*x86_64|PE32\+.*AMD64' <<<"$EXE_FILE_INFO"; then
+  echo "Windows x64 bootstrapper must be an AMD64 PE32+ executable: $EXE" >&2
+  file "$EXE" >&2 || true
+  echo "Build the Windows installer with an amd64 NSIS target." >&2
+  exit 1
+fi
 if ! strings "$EXE" | grep -q 'BubbleHub'; then
   echo "Windows bootstrapper does not contain expected BubbleHub branding." >&2
   exit 1
 fi
 if ! strings "$EXE" | grep -q 'desktop app'; then
   echo "Windows bootstrapper does not contain expected desktop app branding." >&2
+  exit 1
+fi
+if ! strings "$EXE" | grep -q 'BUBBLEHUB_BUNDLED_INSTALL_PS1'; then
+  echo "Windows bootstrapper does not appear to bundle the PowerShell installer." >&2
+  exit 1
+fi
+
+echo "Validating Windows Control Center app .exe..."
+if [[ ! -s "$WINDOWS_APP" ]]; then
+  echo "Windows Control Center app is empty: $WINDOWS_APP" >&2
+  exit 1
+fi
+WINDOWS_APP_INFO="$(file "$WINDOWS_APP")"
+if ! grep -Eiq 'PE32\+.*x86-64|PE32\+.*x86_64|PE32\+.*AMD64' <<<"$WINDOWS_APP_INFO"; then
+  echo "Windows Control Center app must be an AMD64 PE32+ executable: $WINDOWS_APP" >&2
+  file "$WINDOWS_APP" >&2 || true
   exit 1
 fi
 
