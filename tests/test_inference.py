@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import pytest
@@ -7,6 +11,7 @@ import requests
 
 from bubblehub.cli.run import _apply_sandbox_inference_env, _sandbox_inference_endpoint
 from bubblehub.inference import (
+    _BUBBLEHUB_MODULE_BOOTSTRAP,
     InferenceConfig,
     _append_no_proxy,
     _bubblehub_python,
@@ -106,17 +111,52 @@ def test_ensure_inference_endpoint_starts_daemon_when_unhealthy() -> None:
 
 
 def test_inference_daemon_discards_stdio_to_avoid_pipe_deadlock() -> None:
-    import subprocess
-
     config = InferenceConfig(host="127.0.0.1", port=8000, default_specialty="default-instruct")
     with patch("bubblehub.inference.subprocess.Popen") as popen:
         from bubblehub.inference import _start_inference_daemon
 
         _start_inference_daemon(config)
 
+    args = popen.call_args.args[0]
     kwargs = popen.call_args.kwargs
+    assert args[1:3] == ["-I", "-c"]
+    assert "bubblehub.cli.inference_daemon" in args[3]
     assert kwargs["stdout"] is subprocess.DEVNULL
     assert kwargs["stderr"] is subprocess.DEVNULL
+    package_root = Path(__file__).resolve().parents[1]
+    assert str(package_root) in kwargs["env"]["BUBBLEHUB_PYTHONPATH"].split(os.pathsep)
+
+
+def test_inference_daemon_preserves_existing_bubblehub_pythonpath(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BUBBLEHUB_PYTHONPATH", "/tmp/custom-bubblehub")
+    config = InferenceConfig(host="127.0.0.1", port=8000, default_specialty="default-instruct")
+
+    with patch("bubblehub.inference.subprocess.Popen") as popen:
+        from bubblehub.inference import _start_inference_daemon
+
+        _start_inference_daemon(config)
+
+    pythonpath = popen.call_args.kwargs["env"]["BUBBLEHUB_PYTHONPATH"].split(os.pathsep)
+    assert pythonpath[0] == str(Path(__file__).resolve().parents[1])
+    assert "/tmp/custom-bubblehub" in pythonpath
+
+
+def test_inference_daemon_bootstrap_runs_under_isolated_python(tmp_path: Path) -> None:
+    package = tmp_path / "bubblehub" / "cli"
+    package.mkdir(parents=True)
+    marker = tmp_path / "daemon-main-called"
+    (tmp_path / "bubblehub" / "__init__.py").write_text("", encoding="utf-8")
+    (package / "__init__.py").write_text("", encoding="utf-8")
+    (package / "inference_daemon.py").write_text(
+        "from pathlib import Path\n" "def main():\n" f"    Path({str(marker)!r}).write_text('ok', encoding='utf-8')\n" "    return 0\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["BUBBLEHUB_PYTHONPATH"] = str(tmp_path)
+
+    subprocess.run([sys.executable, "-I", "-c", _BUBBLEHUB_MODULE_BOOTSTRAP], env=env, check=True)
+
+    assert marker.read_text(encoding="utf-8") == "ok"
 
 
 def test_sandbox_endpoint_uses_loopback_with_same_port() -> None:

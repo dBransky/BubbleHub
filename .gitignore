@@ -16,3 +16,9 @@ examples/openclaw/openclaw/
 .ci-artifacts/
 app/target/
 .bubblehub-install-app-choice
+node_modules/
+.local-install-test/
+app/gen/schemas/windows-schema.json
+app/icons/.bubblehub-icon-build/
+/BubbleHub-*.exe
+/BubbleHub*.lnk

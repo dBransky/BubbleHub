@@ -16,6 +16,9 @@
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
+    "icon": [
+      "icons/icon.ico"
+    ],
     "shortDescription": "Monitor BubbleHub agents, resources, and models",
     "longDescription": "BubbleHub is a desktop app for monitoring running agents, RAM and VRAM usage, manifests, and local models."
   }

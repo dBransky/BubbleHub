@@ -59,7 +59,7 @@ Windows PowerShell installer:
 irm https://bubblehub.ai/install.ps1 | iex
 ```
 
-The Windows installer uses WSL for the Linux runtime and creates BubbleHub Start Menu and Desktop shortcuts that launch the desktop app.
+The Windows installers check for WSL/Ubuntu, install the released Debian package into WSL, and create BubbleHub Control Center Start Menu and Desktop shortcuts that launch the desktop app.
 
 Windows `.exe` bootstrapper:
 ```powershell

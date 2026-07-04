@@ -21,33 +21,111 @@ function Read-VersionTag {
     return (Get-Content -Raw -Path $Path).Trim()
 }
 
+function Test-PythonExecutable {
+    param([string[]]$Command)
+
+    if (-not $Command -or -not $Command[0]) {
+        return $false
+    }
+
+    $Arguments = @()
+    if ($Command.Count -gt 1) {
+        $Arguments += $Command[1..($Command.Count - 1)]
+    }
+    $Arguments += @("-c", "import sys; print(sys.executable)")
+
+    try {
+        $Output = & $Command[0] @Arguments 2>$null
+        return [bool]$Output
+    } catch {
+        return $false
+    }
+}
+
 function Get-PythonCommand {
+    if ($env:BUBBLEHUB_PYTHON) {
+        $Command = @($env:BUBBLEHUB_PYTHON)
+        if (Test-PythonExecutable $Command) {
+            Write-Output $Command -NoEnumerate
+            return
+        }
+        throw "BUBBLEHUB_PYTHON is set to '$($env:BUBBLEHUB_PYTHON)' but it cannot run Python."
+    }
+
     foreach ($Name in @("python", "python3")) {
         $Command = Get-Command $Name -ErrorAction SilentlyContinue
         if ($Command) {
-            return @($Command.Source)
+            $Candidate = @($Command.Source)
+            if (Test-PythonExecutable $Candidate) {
+                Write-Output $Candidate -NoEnumerate
+                return
+            }
         }
     }
+
+    $ToolRoots = @(
+        $env:pythonLocation,
+        $env:PYTHON_HOME,
+        $env:RUNNER_TOOL_CACHE
+    ) | Where-Object { $_ }
+    foreach ($Root in $ToolRoots) {
+        $Candidates = @(
+            Join-Path $Root "python.exe"
+            Join-Path $Root "python3.exe"
+            Join-Path $Root "x64/python.exe"
+            Join-Path $Root "x86/python.exe"
+        )
+        foreach ($CandidatePath in $Candidates) {
+            if (-not (Test-Path $CandidatePath)) {
+                continue
+            }
+            $Candidate = @($CandidatePath)
+            if (Test-PythonExecutable $Candidate) {
+                Write-Output $Candidate -NoEnumerate
+                return
+            }
+        }
+    }
+
     $Py = Get-Command "py" -ErrorAction SilentlyContinue
     if ($Py) {
-        return @($Py.Source, "-3")
+        $Candidate = @($Py.Source, "-3")
+        if (Test-PythonExecutable $Candidate) {
+            Write-Output $Candidate -NoEnumerate
+            return
+        }
     }
-    throw "Python is required to serve release smoke assets."
+
+    throw @"
+Python is required to serve release smoke assets.
+Install Python on the runner PATH (for example with actions/setup-python@v5) or set BUBBLEHUB_PYTHON to a working python.exe.
+"@
 }
 
 function Start-ArtifactServer {
-    $Python = Get-PythonCommand
-    $Arguments = @()
-    if ($Python.Count -gt 1) {
-        $Arguments += $Python[1..($Python.Count - 1)]
+    $PythonCommand = Get-PythonCommand
+    if ($PythonCommand -is [string]) {
+        $PythonExecutable = $PythonCommand
+        $PythonPrefixArgs = @()
+    } else {
+        $PythonExecutable = [string]$PythonCommand[0]
+        $PythonPrefixArgs = @()
+        if ($PythonCommand.Count -gt 1) {
+            $PythonPrefixArgs = $PythonCommand[1..($PythonCommand.Count - 1)]
+        }
     }
-    $Arguments += @("-m", "http.server", "$Port", "--bind", "0.0.0.0", "--directory", (Resolve-Path $AssetsDir).Path)
-    $Process = Start-Process -FilePath $Python[0] -ArgumentList $Arguments -PassThru -WindowStyle Hidden
+
+    $Arguments = @($PythonPrefixArgs) + @("-m", "http.server", "$Port", "--bind", "0.0.0.0", "--directory", (Resolve-Path $AssetsDir).Path)
+    Write-Host "Starting artifact server with: $PythonExecutable $($Arguments -join ' ')"
+    $Process = Start-Process -FilePath $PythonExecutable -ArgumentList $Arguments -PassThru -WindowStyle Hidden
     $Url = "http://127.0.0.1:$Port/previous/VERSION_TAG"
 
     for ($i = 0; $i -lt 30; $i++) {
+        if ($Process.HasExited) {
+            throw "Artifact server process exited before becoming ready (exit code $($Process.ExitCode))."
+        }
         try {
-            Invoke-WebRequest -UseBasicParsing -Uri $Url | Out-Null
+            Invoke-WebRequest -UseBasicParsing -Uri $Url -TimeoutSec 2 | Out-Null
             return $Process
         } catch {
             Start-Sleep -Seconds 1
@@ -59,22 +137,71 @@ function Start-ArtifactServer {
 }
 
 function Get-WslDistros {
-    $Raw = @(wsl.exe --list --quiet 2>$null)
-    return @(
-        $Raw |
-            ForEach-Object { ($_ -replace "`0", "").Trim() } |
+    $Raw = wsl.exe --list --quiet 2>$null
+    if (-not $Raw) {
+        return @()
+    }
+
+    $Text = if ($Raw -is [System.Array]) {
+        ($Raw | ForEach-Object { ($_ -replace "`0", "").Trim() }) -join "`n"
+    } else {
+        ($Raw -replace "`0", "").Trim()
+    }
+
+    $Distros = @(
+        $Text -split "`r?`n" |
+            ForEach-Object { $_.Trim() } |
             Where-Object { $_ }
     )
+    Write-Output $Distros -NoEnumerate
+}
+
+function Select-WslDistroName {
+    param([object]$Distros)
+
+    if ($Distros -is [string]) {
+        return $Distros
+    }
+    if (-not $Distros -or $Distros.Count -eq 0) {
+        return $null
+    }
+    return [string]$Distros[0]
+}
+
+function Assert-RunnerPrerequisites {
+    if (-not (Get-Command wsl.exe -ErrorAction SilentlyContinue)) {
+        throw "Windows release smoke tests require WSL2. Install it with: wsl --install -d Ubuntu"
+    }
+
+    $Distros = Get-WslDistros
+    $BaseDistro = if ($env:BUBBLEHUB_WINDOWS_BASE_WSL_DISTRO) {
+        $env:BUBBLEHUB_WINDOWS_BASE_WSL_DISTRO
+    } else {
+        Select-WslDistroName $Distros
+    }
+    if (-not $BaseDistro) {
+        throw "Windows release smoke tests require a clean Ubuntu base distro. Install one with: wsl --install -d Ubuntu"
+    }
+
+    wsl.exe -d $BaseDistro bash -lc "true"
+    if ($LASTEXITCODE -ne 0) {
+        throw "WSL distro '$BaseDistro' is not ready. Finish its first-run setup before running Windows release smoke tests."
+    }
+
+    $Status = wsl.exe --status 2>$null
+    if ($LASTEXITCODE -eq 0 -and $Status -notmatch "Default Version:\s*2") {
+        Write-Warning "WSL default version is not WSL2. BubbleHub recommends: wsl --set-default-version 2"
+    }
 }
 
 function New-DisposableWslDistro {
     $BaseDistro = $env:BUBBLEHUB_WINDOWS_BASE_WSL_DISTRO
     if (-not $BaseDistro) {
         $Distros = Get-WslDistros
-        if ($Distros.Count -eq 0) {
+        $BaseDistro = Select-WslDistroName $Distros
+        if (-not $BaseDistro) {
             throw "No WSL distro is available. Install a clean Ubuntu base distro before running Windows release install smoke tests."
         }
-        $BaseDistro = $Distros[0]
     }
 
     $Name = "BubbleHubReleaseSmoke-$Method-$PID"
@@ -118,6 +245,7 @@ function Invoke-Wsl {
         [switch]$AsRoot
     )
 
+    $Command = $Command -replace "`r`n", "`n" -replace "`r", "`n"
     $Args = @("-d", $Distro)
     if ($AsRoot) {
         $Args += @("-u", "root")
@@ -132,10 +260,11 @@ function Invoke-Wsl {
 function Get-WslHostAddress {
     param([string]$Distro)
 
-    $Address = (& wsl.exe -d $Distro bash -lc "ip route show default | awk '{print `$3; exit}'").Trim()
+    $Route = (& wsl.exe -d $Distro bash -lc "ip route show default").Trim()
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to discover the Windows host address from WSL distro '$Distro'."
     }
+    $Address = if ($Route -match "default\s+via\s+(\S+)") { $Matches[1] } else { "" }
     if (-not $Address) {
         throw "WSL distro '$Distro' did not report a default gateway address for reaching the Windows host."
     }
@@ -148,22 +277,28 @@ function Clear-PreviousInstall {
     $CleanupCommand = @'
 set -e
 rm -rf /opt/bubblehub
-rm -f /usr/local/bin/bubble /usr/local/bin/bubblehub /usr/local/bin/bubblehub-node /usr/local/bin/llama-server
+rm -f /usr/local/bin/bubble /usr/local/bin/bubblehub /usr/local/bin/bubblehub-node /usr/local/bin/bubblehub-control-center /usr/local/bin/llama-server
 rm -f /usr/local/bin/bubblehub-sandbox /usr/local/bin/pytest
 rm -rf /root/.cache/bubblehub /home/*/.cache/bubblehub
 '@
     Invoke-Wsl -Distro $Distro -AsRoot -Command $CleanupCommand
 
-    $Shortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "BubbleHub.lnk"
-    $StartMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "BubbleHub/BubbleHub.lnk"
-    Remove-Item -Force $Shortcut, $StartMenuShortcut -ErrorAction SilentlyContinue
+    $Desktop = [Environment]::GetFolderPath("Desktop")
+    $Programs = [Environment]::GetFolderPath("Programs")
+    $Shortcuts = @(
+        (Join-Path $Desktop "BubbleHub.lnk"),
+        (Join-Path $Desktop "BubbleHub Control Center.lnk"),
+        (Join-Path $Programs "BubbleHub/BubbleHub.lnk"),
+        (Join-Path $Programs "BubbleHub/BubbleHub Control Center.lnk")
+    )
+    Remove-Item -Force $Shortcuts -ErrorAction SilentlyContinue
 }
 
 function Stop-BubbleHubApp {
     param([string]$Distro)
 
     if ($Distro) {
-        wsl.exe -d $Distro bash -lc "pkill -f 'bubblehub --host' >/dev/null 2>&1 || true; pkill -f '/opt/bubblehub/share/bubblehub/app/bubblehub' >/dev/null 2>&1 || true" 2>$null | Out-Null
+        wsl.exe -d $Distro bash -lc "pkill -f 'bubble app --host' >/dev/null 2>&1 || true; pkill -f bubblehub-control-center >/dev/null 2>&1 || true; pkill -f '/opt/bubblehub/share/bubblehub/app/bubblehub' >/dev/null 2>&1 || true" 2>$null | Out-Null
     }
 }
 
@@ -182,13 +317,14 @@ function Invoke-Installer {
     $env:BUBBLEHUB_WSL_DISTRO = $Distro
     $env:BUBBLEHUB_INSTALL_APP = "1"
     $env:BUBBLEHUB_SKIP_MODEL_SETUP = "1"
+    $env:BUBBLEHUB_INSTALLER_SILENT = "1"
     $env:DEBIAN_FRONTEND = "noninteractive"
     $env:TZ = "Etc/UTC"
 
     if ($Method -eq "ps1") {
         $InstallScriptUrl = "$WindowsBaseUrl/$VersionTag/install.ps1"
         Write-Host "--- PowerShell installer smoke: $VersionTag ---"
-        Invoke-Expression (Invoke-RestMethod -Uri $InstallScriptUrl)
+        Invoke-Expression "irm '$InstallScriptUrl' | iex"
         return
     }
 
@@ -214,11 +350,22 @@ function Assert-InstalledVersion {
         throw "Expected 'bubble $Version' from WSL, got '$Output'."
     }
 
-    Invoke-Wsl -Distro $Distro -Command "test -x /opt/bubblehub/share/bubblehub/app/bubblehub"
+    Invoke-Wsl -Distro $Distro -Command "command -v bubble >/dev/null"
+    Invoke-Wsl -Distro $Distro -Command "bubble --help >/dev/null"
+    Invoke-Wsl -Distro $Distro -Command "bubble app --help >/dev/null"
+    Invoke-Wsl -Distro $Distro -Command "bubble specialties list | grep -q default-instruct"
 
     $Shortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "BubbleHub.lnk"
     if (-not (Test-Path $Shortcut)) {
         throw "Expected BubbleHub desktop shortcut at $Shortcut."
+    }
+    $StartMenuShortcut = Join-Path ([Environment]::GetFolderPath("Programs")) "BubbleHub/BubbleHub.lnk"
+    if (-not (Test-Path $StartMenuShortcut)) {
+        throw "Expected BubbleHub Start Menu shortcut at $StartMenuShortcut."
+    }
+    $WindowsApp = Join-Path $env:LOCALAPPDATA "BubbleHub/BubbleHub.exe"
+    if (-not (Test-Path $WindowsApp)) {
+        throw "Expected BubbleHub Windows Control Center app at $WindowsApp."
     }
 }
 
@@ -271,6 +418,7 @@ $Server = $null
 $Distro = $null
 
 try {
+    Assert-RunnerPrerequisites
     $Server = Start-ArtifactServer
     $Distro = New-DisposableWslDistro
     Clear-PreviousInstall -Distro $Distro.Name

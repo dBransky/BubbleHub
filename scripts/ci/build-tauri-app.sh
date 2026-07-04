@@ -3,8 +3,13 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MANIFEST="$ROOT/app/Cargo.toml"
+ICON="$ROOT/app/icons/icon.ico"
 
 export CARGO_HTTP_MULTIPLEXING="${CARGO_HTTP_MULTIPLEXING:-false}"
+
+if [[ ! -f "$ICON" ]]; then
+  python3 "$ROOT/scripts/ci/write-windows-icon.py" "$ICON"
+fi
 
 build_tauri_app() {
   cargo fetch --manifest-path "$MANIFEST"

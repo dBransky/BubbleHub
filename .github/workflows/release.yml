@@ -259,10 +259,41 @@ jobs:
           name: container-image
           path: container-image/container-image.txt
 
+  windows-control-center:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build BubbleHub Windows Control Center
+        shell: pwsh
+        run: |
+          npm install
+          python scripts/ci/write-windows-icon.py app/icons/icon.ico
+          npm run app:build
+          $version = "${env:GITHUB_REF_NAME}".TrimStart("v")
+          New-Item -ItemType Directory -Force -Path windows-control-center | Out-Null
+          Copy-Item app/target/release/bubblehub-control-center.exe "windows-control-center/BubbleHub-$version-control-center-x64.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-control-center
+          path: windows-control-center/*
+
   release-artifacts:
     runs-on: ubuntu-22.04
     needs:
       - publish-runtime-image
+      - windows-control-center
     steps:
       - uses: actions/checkout@v4
 
@@ -271,10 +302,15 @@ jobs:
           name: container-image
           path: release-assets
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-control-center
+          path: release-assets
+
       - name: Install release packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y nsis
+          sudo apt-get install -y nsis python3 librsvg2-bin
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -302,6 +338,7 @@ jobs:
             install.ps1 \
             "BubbleHub-${VERSION}-x64.deb" \
             "BubbleHub-${VERSION}-x64.exe" \
+            "BubbleHub-${VERSION}-control-center-x64.exe" \
             container-image.txt \
             > SHA256SUMS
 
@@ -381,6 +418,7 @@ jobs:
             release-assets/install.ps1
             release-assets/BubbleHub-*-x64.deb
             release-assets/BubbleHub-*-x64.exe
+            release-assets/BubbleHub-*-control-center-x64.exe
             release-assets/container-image.txt
             release-assets/SHA256SUMS
           body_path: ${{ steps.release-notes.outputs.body_path }}
@@ -396,6 +434,7 @@ jobs:
             release-assets/install.ps1
             release-assets/BubbleHub-*-x64.deb
             release-assets/BubbleHub-*-x64.exe
+            release-assets/BubbleHub-*-control-center-x64.exe
             release-assets/container-image.txt
             release-assets/SHA256SUMS
           generate_release_notes: true
@@ -418,7 +457,7 @@ jobs:
       - name: Install release packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y nsis
+          sudo apt-get install -y nsis python3 librsvg2-bin
 
       - name: Build release install smoke assets
         env:
@@ -426,6 +465,16 @@ jobs:
           BUBBLEHUB_CURRENT_ASSETS_DIR: ${{ github.workspace }}/current-release-assets
           BUBBLEHUB_PREVIOUS_VERSION_TAG: v0.0.0+release.smoke.1
         run: bash scripts/ci/build-release-smoke-assets.sh .ci-artifacts/release-smoke-assets
+
+      - name: Inject previous Windows Control Center smoke asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          apps=(current-release-assets/BubbleHub-*-control-center-x64.exe)
+          source="${apps[0]}"
+          tag="$(cat .ci-artifacts/release-smoke-assets/previous/VERSION_TAG)"
+          version="${tag#v}"
+          cp "$source" ".ci-artifacts/release-smoke-assets/${tag}/BubbleHub-${version}-control-center-x64.exe"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -466,6 +515,10 @@ jobs:
         method: [ps1, exe]
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - uses: actions/download-artifact@v4
         with:

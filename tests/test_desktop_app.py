@@ -41,6 +41,12 @@ def test_tauri_command_prefers_configured_binary(monkeypatch) -> None:
     assert _tauri_command() == ["/opt/bubblehub/share/bubblehub/app/bubblehub"]
 
 
+def test_windows_tauri_app_uses_gui_subsystem() -> None:
+    main_rs = _app_deps_script().parents[1] / "app" / "src" / "main.rs"
+
+    assert 'windows_subsystem = "windows"' in main_rs.read_text(encoding="utf-8")
+
+
 def test_tauri_command_prompts_to_install_when_missing(monkeypatch, tmp_path) -> None:
     installed = tmp_path / "bubblehub"
     monkeypatch.delenv("BUBBLEHUB_TAURI_BIN", raising=False)
