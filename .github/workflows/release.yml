@@ -516,10 +516,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       - uses: actions/download-artifact@v4
         with:
           name: release-smoke-assets
@@ -527,7 +523,15 @@ jobs:
 
       - name: Validate Windows ${{ matrix.method }} release installation
         shell: pwsh
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/ci/run-windows-release-install-smoke.ps1 -Method "${{ matrix.method }}" -AssetsDir release-smoke-assets
+        run: |
+          $python = Get-ChildItem -Path "$env:RUNNER_TOOL_CACHE\Python\*\x64\python.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if ($python) {
+            $env:BUBBLEHUB_PYTHON = $python.FullName
+            Write-Host "Using runner toolcache Python: $($env:BUBBLEHUB_PYTHON)"
+          }
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/ci/run-windows-release-install-smoke.ps1 -Method "${{ matrix.method }}" -AssetsDir release-smoke-assets
 
   discord-announcement:
     runs-on: ubuntu-22.04

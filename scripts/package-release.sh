@@ -153,6 +153,9 @@ Section "Install BubbleHub"
   StrCpy \$0 "\$TEMP\\bubblehub-install-bootstrap.ps1"
   FileOpen \$1 "\$0" w
   FileWrite \$1 "\$\$ErrorActionPreference = 'Stop'\$\r\$\n"
+  FileWrite \$1 "\$\$LogPath = \$\$env:BUBBLEHUB_INSTALLER_LOG\$\r\$\n"
+  FileWrite \$1 "if (\$\$LogPath) { Start-Transcript -Path \$\$LogPath -Append | Out-Null }\$\r\$\n"
+  FileWrite \$1 "try {\$\r\$\n"
   FileWrite \$1 "\$\$env:BUBBLEHUB_VERSION = '${VERSION_TAG}'\$\r\$\n"
   FileWrite \$1 "\$\$env:BUBBLEHUB_BUNDLED_INSTALL_PS1 = '1'\$\r\$\n"
   IfSilent silent_mode normal_mode
@@ -172,8 +175,9 @@ EOF
 
   cat >> "$nsis_script" <<EOF
   FileWrite \$1 "& '\$PLUGINSDIR\\install.ps1'\$\r\$\n"
+  FileWrite \$1 "} finally { if (\$\$LogPath) { Stop-Transcript | Out-Null } }\$\r\$\n"
   FileClose \$1
-  ExecWait \`powershell.exe -NoProfile -ExecutionPolicy Bypass -File "\$0"\` \$2
+  ExecWait \`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File "\$0"\` \$2
   Delete "\$0"
   IntCmp \$2 0 done
     IfSilent silent_failure

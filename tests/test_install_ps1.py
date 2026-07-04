@@ -72,6 +72,21 @@ def test_windows_install_script_installs_release_deb_in_wsl() -> None:
     assert "BUBBLEHUB_INSTALLER_SILENT" in script
     assert "wsl --install -d Ubuntu" in script
     assert "Install-WindowsControlCenter" in script
+    assert "Stop-WindowsControlCenter -AppPath $AppPath -InstallRoot $InstallRoot -Port $AppPort" in script
+    assert "Stop-WindowsProcessByCommandLine" in script
+    assert "Stop-WslControlApi" in script
+    assert "Could not stop existing BubbleHub WSL Control API" in script
+    assert '"[a]pp --host 127.0.0.1 --port $port"' in script
+    assert "ControlApiKillCommandTemplate" in script
+    assert "ExpectedVersion" in script
+    assert "`$Health.version -eq `$ExpectedVersion" in script
+    assert "bubblehub-control-center-server.pid" in script
+    assert "/tmp/bubblehub-control-center-" in script
+    assert "echo $$" in script
+    assert "ps -eo pid=,args=" in script
+    assert "Get-CimInstance Win32_Process" in script
+    assert '$TempAppPath = "$AppPath.download"' in script
+    assert "Move-Item -Force $TempAppPath $AppPath" in script
     assert "bubble app --host 127.0.0.1" in script
     assert "bubblehub --host 127.0.0.1" not in script
 
@@ -84,6 +99,10 @@ def test_package_release_bundles_branded_x64_windows_installer() -> None:
     assert "BUBBLEHUB_BUNDLED_INSTALL_PS1" in script
     assert "write-windows-icon.py" in script
     assert "rsvg-convert" in script
+    assert "NonInteractive" in script
+    assert "WindowStyle Hidden" in script
+    assert "BUBBLEHUB_INSTALLER_LOG" in script
+    assert "Start-Transcript" in script
 
 
 def test_windows_icon_is_rendered_from_logo_svg() -> None:
@@ -110,7 +129,31 @@ def test_windows_release_smoke_exercises_ps1_and_exe_contracts() -> None:
     assert "BUBBLEHUB_INSTALLER_SILENT" in script
     assert "BubbleHub/BubbleHub.lnk" in script
     assert "bubble app --help" in script
-    assert "bubble app --host" in script
+    assert "[a]pp --host 127.0.0.1 --port $port" in script
+    assert "Assert-ReleaseSmokeAssets" in script
+    assert "apt-get purge -y bubblehub" in script
+    assert "dpkg --purge --force-all bubblehub" in script
+    assert "/usr/bin/bubble" in script
+    assert "Stop-WindowsProcessByPath" in script
+    assert "Stop-WindowsProcessByCommandLine" in script
+    assert '"[a]pp --host 127.0.0.1 --port $port"' in script
+    assert 'ss -H -ltnp "sport = :$port"' in script
+    assert "ps -eo pid=,args=" in script
+    assert "/tmp/bubblehub-control-center-$port.pid" in script
+    assert "/proc/net/tcp /proc/net/tcp6" in script
+    assert "printf '%04X'" not in script
+    assert "Write-DesktopDebugSnapshot" in script
+    assert "ss -H -ltnp 'sport = :8010'" in script
+    assert "bubblehub-control-center-server.pid" in script
+    assert "wsl.exe -d $Distro -u root bash -lc $KillCommand" in script
+    assert "Timed out waiting for BubbleHub desktop launch health response for $VersionTag. Last health result:" in script
+    assert "BUBBLEHUB_DEB_URL" in script
+    assert "Start-WslArtifactServer" in script
+    assert '"--exec", "python3", "-m", "http.server", "$Port", "--bind", "127.0.0.1"' in script
+    assert '$WslBaseUrl = "http://127.0.0.1:$Port"' in script
+    assert "BUBBLEHUB_WINDOWS_APP_URL" in script
+    assert "BUBBLEHUB_INSTALLER_LOG" in script
+    assert '"http://127.0.0.1:$Port"' in script
 
 
 def test_linux_release_smoke_exercises_visible_cli_command() -> None:

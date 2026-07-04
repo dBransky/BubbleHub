@@ -100,7 +100,8 @@ function Install-WindowsLaunchers {
     param(
         [bool]$InstallDesktopShortcut,
         [string]$WslDistroName = "",
-        [string]$WindowsAppPath = ""
+        [string]$WindowsAppPath = "",
+        [string]$ExpectedVersion = ""
     )
 
     $InstallRoot = Join-Path $env:LOCALAPPDATA "BubbleHub"
@@ -112,12 +113,67 @@ function Install-WindowsLaunchers {
     if ($InstallDesktopShortcut) {
         $LauncherScript = Join-Path $InstallRoot "bubblehub-control-center.ps1"
         $ServerScript = Join-Path $InstallRoot "bubblehub-control-center-server.ps1"
+        $ServerPidFile = Join-Path $InstallRoot "bubblehub-control-center-server.pid"
         $QuotedWslDistro = ConvertTo-PowerShellSingleQuoted $WslDistroName
+        $ControlApiKillCommandTemplate = @'
+set +e
+port="__APP_PORT__"
+case "$port" in
+  ''|*[!0-9]*) port=8010 ;;
+esac
+pid_file="/tmp/bubblehub-control-center-$port.pid"
+if [ -f "$pid_file" ]; then
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  case "$pid" in
+    ''|*[!0-9]*) ;;
+    *)
+      kill -TERM "$pid" >/dev/null 2>&1 || true
+      sleep 1
+      kill -KILL "$pid" >/dev/null 2>&1 || true
+      ;;
+  esac
+  rm -f "$pid_file"
+fi
+if command -v ss >/dev/null 2>&1; then
+  for pid in $(ss -H -ltnp "sport = :$port" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u); do
+    kill -TERM "$pid" >/dev/null 2>&1 || true
+  done
+fi
+ps -eo pid=,args= 2>/dev/null | awk -v port="$port" '$0 ~ "[a]pp --host 127.0.0.1 --port " port { print $1 }' | while read -r pid; do
+  kill -TERM "$pid" >/dev/null 2>&1 || true
+done
+for inode in $(awk -v port="$port" 'BEGIN { p=sprintf("%04X", port + 0) } $4 == "0A" { split($2, a, ":"); if (toupper(a[2]) == p) print $10 }' /proc/net/tcp /proc/net/tcp6 2>/dev/null | sort -u); do
+  for fd in /proc/[0-9]*/fd/*; do
+    target="$(readlink "$fd" 2>/dev/null || true)"
+    if [ "$target" = "socket:[$inode]" ]; then
+      pid="${fd#/proc/}"
+      pid="${pid%%/*}"
+      kill -TERM "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+done
+pkill -TERM -f "[a]pp --host 127.0.0.1 --port $port" >/dev/null 2>&1 || true
+sleep 1
+ps -eo pid=,args= 2>/dev/null | awk -v port="$port" '$0 ~ "[a]pp --host 127.0.0.1 --port " port { print $1 }' | while read -r pid; do
+  kill -KILL "$pid" >/dev/null 2>&1 || true
+done
+'@
+        $QuotedControlApiKillCommandTemplate = ConvertTo-PowerShellSingleQuoted $ControlApiKillCommandTemplate
         @"
 `$ErrorActionPreference = "Stop"
 `$Port = if (`$env:BUBBLEHUB_APP_PORT) { `$env:BUBBLEHUB_APP_PORT } else { "8010" }
 `$WslDistro = $QuotedWslDistro
-`$Command = "BUBBLEHUB_WINDOWS_APP=1 bubble app --host 127.0.0.1 --port `$Port --server-only"
+`$KillCommand = $QuotedControlApiKillCommandTemplate.Replace("__APP_PORT__", [string]`$Port)
+try {
+    if (`$WslDistro) {
+        & wsl.exe -d `$WslDistro -u root bash -lc `$KillCommand 2>`$null | Out-Null
+    } else {
+        & wsl.exe -u root bash -lc `$KillCommand 2>`$null | Out-Null
+    }
+} catch {
+}
+Start-Sleep -Seconds 1
+`$Command = 'set -e; rm -f "/tmp/bubblehub-control-center-' + [string]`$Port + '.pid"; echo $$ > "/tmp/bubblehub-control-center-' + [string]`$Port + '.pid"; BUBBLEHUB_WINDOWS_APP=1 exec bubble app --host 127.0.0.1 --port ' + [string]`$Port + ' --server-only'
 if (`$WslDistro) {
     & wsl.exe -d `$WslDistro bash -lc `$Command
 } else {
@@ -127,20 +183,34 @@ if (`$WslDistro) {
 
         $QuotedServerScript = ConvertTo-PowerShellSingleQuoted $ServerScript
         $QuotedWindowsAppPath = ConvertTo-PowerShellSingleQuoted $WindowsAppPath
+        $QuotedExpectedVersion = ConvertTo-PowerShellSingleQuoted $ExpectedVersion
+        $QuotedServerPidFile = ConvertTo-PowerShellSingleQuoted $ServerPidFile
         @"
 `$ErrorActionPreference = "Stop"
 `$Port = if (`$env:BUBBLEHUB_APP_PORT) { `$env:BUBBLEHUB_APP_PORT } else { "8010" }
 `$Url = "http://127.0.0.1:`$Port/"
 `$ServerScript = $QuotedServerScript
 `$WindowsApp = $QuotedWindowsAppPath
-Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", `$ServerScript) -WindowStyle Hidden | Out-Null
+`$ExpectedVersion = $QuotedExpectedVersion
+`$ServerPidFile = $QuotedServerPidFile
+if (Test-Path `$ServerPidFile) {
+    `$OldServerPid = (Get-Content -Raw -Path `$ServerPidFile -ErrorAction SilentlyContinue).Trim()
+    if (`$OldServerPid -match "^\d+`$") {
+        Stop-Process -Id ([int]`$OldServerPid) -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item -Force `$ServerPidFile -ErrorAction SilentlyContinue
+}
+`$ServerProcess = Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-File", `$ServerScript) -WindowStyle Hidden -PassThru
+Set-Content -Path `$ServerPidFile -Value `$ServerProcess.Id -Encoding ASCII
 for (`$i = 0; `$i -lt 60; `$i++) {
     try {
-        Invoke-RestMethod -Uri "`$(`$Url)health" -TimeoutSec 2 | Out-Null
-        break
+        `$Health = Invoke-RestMethod -Uri "`$(`$Url)health" -TimeoutSec 2
+        if (-not `$ExpectedVersion -or `$Health.version -eq `$ExpectedVersion) {
+            break
+        }
     } catch {
-        Start-Sleep -Seconds 1
     }
+    Start-Sleep -Seconds 1
 }
 if (`$WindowsApp -and (Test-Path `$WindowsApp)) {
     Start-Process -FilePath `$WindowsApp -ArgumentList @(`$Url)
@@ -321,20 +391,162 @@ function Resolve-WindowsAppUrl {
     return "https://github.com/$Repo/releases/download/$VersionTag/$AppName"
 }
 
+function Stop-WindowsProcessByCommandLine {
+    param([string]$Needle)
+
+    if (-not $Needle) {
+        return
+    }
+
+    $Processes = @(
+        Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Where-Object { $_.CommandLine -and $_.CommandLine.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 }
+    )
+    foreach ($Process in $Processes) {
+        Write-Host "Stopping BubbleHub helper process $($Process.ProcessId)..."
+        Stop-Process -Id $Process.ProcessId -Force -ErrorAction SilentlyContinue
+        try {
+            Wait-Process -Id $Process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
+        } catch {
+            # The process may already have exited.
+        }
+    }
+}
+
+function Stop-WindowsProcessByPidFile {
+    param([string]$PidFile)
+
+    if (-not $PidFile -or -not (Test-Path $PidFile)) {
+        return
+    }
+
+    $ProcessIdText = (Get-Content -Raw -Path $PidFile -ErrorAction SilentlyContinue).Trim()
+    if ($ProcessIdText -match "^\d+$") {
+        Write-Host "Stopping BubbleHub helper process $ProcessIdText from $PidFile..."
+        Stop-Process -Id ([int]$ProcessIdText) -Force -ErrorAction SilentlyContinue
+        try {
+            Wait-Process -Id ([int]$ProcessIdText) -Timeout 10 -ErrorAction SilentlyContinue
+        } catch {
+            # The process may already have exited.
+        }
+    }
+    Remove-Item -Force $PidFile -ErrorAction SilentlyContinue
+}
+
+function Stop-WslControlApi {
+    param([int]$Port)
+
+    $KillCommand = @'
+set +e
+port="__APP_PORT__"
+case "$port" in
+  ''|*[!0-9]*) port=8010 ;;
+esac
+pid_file="/tmp/bubblehub-control-center-$port.pid"
+if [ -f "$pid_file" ]; then
+  pid="$(cat "$pid_file" 2>/dev/null || true)"
+  case "$pid" in
+    ''|*[!0-9]*) ;;
+    *)
+      kill -TERM "$pid" >/dev/null 2>&1 || true
+      sleep 1
+      kill -KILL "$pid" >/dev/null 2>&1 || true
+      ;;
+  esac
+  rm -f "$pid_file"
+fi
+if command -v ss >/dev/null 2>&1; then
+  for pid in $(ss -H -ltnp "sport = :$port" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u); do
+    kill -TERM "$pid" >/dev/null 2>&1 || true
+  done
+fi
+ps -eo pid=,args= 2>/dev/null | awk -v port="$port" '$0 ~ "[a]pp --host 127.0.0.1 --port " port { print $1 }' | while read -r pid; do
+  kill -TERM "$pid" >/dev/null 2>&1 || true
+done
+for inode in $(awk -v port="$port" 'BEGIN { p=sprintf("%04X", port + 0) } $4 == "0A" { split($2, a, ":"); if (toupper(a[2]) == p) print $10 }' /proc/net/tcp /proc/net/tcp6 2>/dev/null | sort -u); do
+  for fd in /proc/[0-9]*/fd/*; do
+    target="$(readlink "$fd" 2>/dev/null || true)"
+    if [ "$target" = "socket:[$inode]" ]; then
+      pid="${fd#/proc/}"
+      pid="${pid%%/*}"
+      kill -TERM "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+done
+pkill -TERM -f "[a]pp --host 127.0.0.1 --port $port" >/dev/null 2>&1 || true
+sleep 1
+ps -eo pid=,args= 2>/dev/null | awk -v port="$port" '$0 ~ "[a]pp --host 127.0.0.1 --port " port { print $1 }' | while read -r pid; do
+  kill -KILL "$pid" >/dev/null 2>&1 || true
+done
+if command -v ss >/dev/null 2>&1; then
+  for pid in $(ss -H -ltnp "sport = :$port" 2>/dev/null | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u); do
+    kill -KILL "$pid" >/dev/null 2>&1 || true
+  done
+fi
+'@.Replace("__APP_PORT__", [string]$Port)
+
+    try {
+        Invoke-WslBash -AsRoot -Command $KillCommand 2>$null | Out-Null
+    } catch {
+        Write-Warning "Could not stop existing BubbleHub WSL Control API. Continuing install: $($_.Exception.Message)"
+    }
+}
+
+function Stop-WindowsControlCenter {
+    param(
+        [string]$AppPath,
+        [string]$InstallRoot,
+        [int]$Port
+    )
+
+    if ($InstallRoot) {
+        Stop-WindowsProcessByPidFile -PidFile (Join-Path $InstallRoot "bubblehub-control-center-server.pid")
+        Stop-WindowsProcessByCommandLine -Needle (Join-Path $InstallRoot "bubblehub-control-center-server.ps1")
+        Stop-WindowsProcessByCommandLine -Needle (Join-Path $InstallRoot "bubblehub-control-center.ps1")
+    }
+
+    if ($Port -gt 0) {
+        Stop-WslControlApi -Port $Port
+    }
+
+    if ($AppPath) {
+        $FullAppPath = [System.IO.Path]::GetFullPath($AppPath)
+        $Processes = @(
+            Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+                Where-Object { $_.ExecutablePath -and ([string]::Equals($_.ExecutablePath, $FullAppPath, [System.StringComparison]::OrdinalIgnoreCase)) }
+        )
+        foreach ($Process in $Processes) {
+            Write-Host "Stopping existing BubbleHub Windows Control Center process $($Process.ProcessId)..."
+            Stop-Process -Id $Process.ProcessId -Force -ErrorAction SilentlyContinue
+            try {
+                Wait-Process -Id $Process.ProcessId -Timeout 10 -ErrorAction SilentlyContinue
+            } catch {
+                # The process may already have exited.
+            }
+        }
+    }
+}
+
 function Install-WindowsControlCenter {
     param([string]$VersionTag)
 
     $InstallRoot = Join-Path $env:LOCALAPPDATA "BubbleHub"
     New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
     $AppPath = Join-Path $InstallRoot "BubbleHub.exe"
+    $TempAppPath = "$AppPath.download"
+    $AppPort = if ($env:BUBBLEHUB_APP_PORT) { [int]$env:BUBBLEHUB_APP_PORT } else { 8010 }
+    Stop-WindowsControlCenter -AppPath $AppPath -InstallRoot $InstallRoot -Port $AppPort
+    Remove-Item -Force $TempAppPath -ErrorAction SilentlyContinue
     if ($env:BUBBLEHUB_WINDOWS_APP_LOCAL_PATH) {
         Write-Host "Installing BubbleHub Windows Control Center from $($env:BUBBLEHUB_WINDOWS_APP_LOCAL_PATH)..."
-        Copy-Item -Force $env:BUBBLEHUB_WINDOWS_APP_LOCAL_PATH $AppPath
+        Copy-Item -Force $env:BUBBLEHUB_WINDOWS_APP_LOCAL_PATH $TempAppPath
+        Move-Item -Force $TempAppPath $AppPath
         return $AppPath
     }
     $AppUrl = Resolve-WindowsAppUrl $VersionTag
     Write-Host "Installing BubbleHub Windows Control Center from $AppUrl..."
-    Invoke-WebRequest -UseBasicParsing -Uri $AppUrl -OutFile $AppPath
+    Invoke-WebRequest -UseBasicParsing -Uri $AppUrl -OutFile $TempAppPath -TimeoutSec 300
+    Move-Item -Force $TempAppPath $AppPath
     return $AppPath
 }
 
@@ -377,7 +589,7 @@ if ($env:OS -eq "Windows_NT") {
         Invoke-WslBash "command -v bubble >/dev/null 2>&1"
         $DesktopInstalled = ($LASTEXITCODE -eq 0)
         $WindowsAppPath = Install-WindowsControlCenter -VersionTag $ResolvedVersion
-        Install-WindowsLaunchers -InstallDesktopShortcut:$DesktopInstalled -WslDistroName $WslDistro -WindowsAppPath $WindowsAppPath
+        Install-WindowsLaunchers -InstallDesktopShortcut:$DesktopInstalled -WslDistroName $WslDistro -WindowsAppPath $WindowsAppPath -ExpectedVersion $ResolvedVersion.TrimStart("v")
     }
     exit $LASTEXITCODE
 }
