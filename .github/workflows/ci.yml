@@ -263,7 +263,7 @@ jobs:
           python scripts/ci/write-windows-icon.py app/icons/icon.ico
           npm run app:build
           New-Item -ItemType Directory -Force -Path windows-control-center | Out-Null
-          Copy-Item app/target/release/bubblehub-control-center.exe "windows-control-center/BubbleHub-control-center-x64.exe"
+          Copy-Item app/target/release/bubblehub.exe "windows-control-center/BubbleHub-control-center-x64.exe"
 
       - uses: actions/upload-artifact@v4
         with:
