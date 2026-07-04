@@ -15,6 +15,18 @@ import yaml
 from bubblehub.log import log_debug, log_error, log_info
 
 
+_BUBBLEHUB_MODULE_BOOTSTRAP = (
+    "import os, sys; "
+    "from pathlib import Path; "
+    "candidates = [Path(p) for p in os.environ.get('BUBBLEHUB_PYTHONPATH', '').split(os.pathsep) if p]; "
+    "lib = Path(sys.prefix) / 'lib'; "
+    "candidates.extend(sorted(lib.glob('python*/site-packages'), reverse=True) if lib.is_dir() else []); "
+    "sys.path[:0] = [str(p) for p in candidates if (p / 'bubblehub').is_dir()]; "
+    "from bubblehub.cli.inference_daemon import main; "
+    "raise SystemExit(main())"
+)
+
+
 @dataclass(frozen=True)
 class InferenceConfig:
     host: str
@@ -108,11 +120,12 @@ def _start_inference_daemon(config: InferenceConfig) -> None:
     env["BUBBLEHUB_INFERENCE_PORT"] = str(config.port)
     env["BUBBLEHUB_INFERENCE_SPECIALTY"] = config.default_specialty
     env.setdefault("BUBBLEHUB_LOG_LEVEL", os.environ.get("BUBBLEHUB_LOG_LEVEL", "error"))
+    env["BUBBLEHUB_PYTHONPATH"] = _prepend_pythonpath(env.get("BUBBLEHUB_PYTHONPATH", ""), Path(__file__).resolve().parent.parent)
     if "BUBBLEHUB_LOG_FILE" in os.environ:
         env["BUBBLEHUB_LOG_FILE"] = os.environ["BUBBLEHUB_LOG_FILE"]
     log_debug("spawning inference daemon", f"python={python} host={config.host} port={config.port}")
     subprocess.Popen(
-        [python, "-m", "bubblehub.cli.inference_daemon"],
+        [python, "-I", "-c", _BUBBLEHUB_MODULE_BOOTSTRAP],
         env=env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -123,7 +136,8 @@ def _start_inference_daemon(config: InferenceConfig) -> None:
 def _load_models_config() -> dict[str, object]:
     with resources.files("bubblehub.config").joinpath("models.yaml").open("r", encoding="utf-8") as handle:
         data = yaml.safe_load(handle)
-    override_path = Path.home() / ".config" / "bubblehub" / "models.yaml"
+    home = Path(os.environ["HOME"]).expanduser() if os.environ.get("HOME") else Path.home()
+    override_path = home / ".config" / "bubblehub" / "models.yaml"
     if override_path.exists():
         with override_path.open("r", encoding="utf-8") as handle:
             override = yaml.safe_load(handle)
@@ -160,6 +174,12 @@ def _append_no_proxy(value: str) -> str:
         if entry not in entries:
             entries.append(entry)
     return ",".join(entries)
+
+
+def _prepend_pythonpath(value: str, path: Path) -> str:
+    entries = [str(path), *(entry for entry in value.split(os.pathsep) if entry)]
+    deduped = list(dict.fromkeys(entries))
+    return os.pathsep.join(deduped)
 
 
 def _bubblehub_python() -> str:

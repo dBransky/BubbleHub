@@ -64,6 +64,18 @@ deb ${ROOTFS_MIRROR} ${ROOTFS_SUITE}-security ${APT_COMPONENTS}
 EOF
 
 ${SUDO} mkdir -p "$TMP_DIR/rootfs/opt/bubblehub" "$TMP_DIR/rootfs/workspace"
+${SUDO} touch \
+  "$TMP_DIR/rootfs/usr/bin/bubble" \
+  "$TMP_DIR/rootfs/usr/bin/bubblehub" \
+  "$TMP_DIR/rootfs/usr/bin/bubblehub-node" \
+  "$TMP_DIR/rootfs/usr/bin/bubblehub-sandbox" \
+  "$TMP_DIR/rootfs/usr/bin/llama-server" \
+  "$TMP_DIR/rootfs/usr/lib/libbubble.so" \
+  "$TMP_DIR/rootfs/usr/lib/libbubblehub.so"
+${SUDO} mkdir -p "$TMP_DIR/rootfs/usr/lib/x86_64-linux-gnu"
+${SUDO} touch \
+  "$TMP_DIR/rootfs/usr/lib/x86_64-linux-gnu/libbubble.so" \
+  "$TMP_DIR/rootfs/usr/lib/x86_64-linux-gnu/libbubblehub.so"
 ${SUDO} tee "$TMP_DIR/rootfs/.bubblehub-rootfs.json" >/dev/null <<EOF
 {
   "name": "ubuntu",
