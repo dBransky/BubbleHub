@@ -128,11 +128,9 @@ build_assets_from_source() {
   local src="$TMP_DIR/src-${label}"
   local image_tag
   local runtime_image
-  local windows_base_url
 
   image_tag="$(safe_image_tag "$version_tag")"
   runtime_image="bubblehub:release-smoke-${label}-${image_tag}"
-  windows_base_url="${BUBBLEHUB_RELEASE_SMOKE_WINDOWS_URL:-http://127.0.0.1:8765}"
 
   echo "Preparing ${label} release smoke assets for ${version_tag}..."
   copy_source "$src"
@@ -161,7 +159,6 @@ build_assets_from_source() {
     cd "$src"
     BUBBLEHUB_REPO="${BUBBLEHUB_REPO:-bublhub/bubblehub}" \
     BUBBLEHUB_RUNTIME_IMAGE="$runtime_image" \
-    BUBBLEHUB_INSTALL_PS1_URL="${windows_base_url%/}/${version_tag}/install.ps1" \
       scripts/package-release.sh "$version_tag" "$assets_dir"
   )
 

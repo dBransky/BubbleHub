@@ -225,7 +225,7 @@ jobs:
       - name: Install release packaging tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y nsis
+          sudo apt-get install -y nsis python3 librsvg2-bin
 
       - name: Build release install smoke assets
         env:
@@ -236,6 +236,39 @@ jobs:
         with:
           name: release-smoke-assets
           path: .ci-artifacts/release-smoke-assets/
+
+  windows-control-center:
+    runs-on: windows-2022
+    needs:
+      - unit-tests
+      - integration-tests
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build BubbleHub Windows Control Center
+        shell: pwsh
+        run: |
+          npm install
+          python scripts/ci/write-windows-icon.py app/icons/icon.ico
+          npm run app:build
+          New-Item -ItemType Directory -Force -Path windows-control-center | Out-Null
+          Copy-Item app/target/release/bubblehub-control-center.exe "windows-control-center/BubbleHub-control-center-x64.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-control-center
+          path: windows-control-center/*
 
   release-smoke-linux:
     runs-on: ubuntu-22.04
@@ -263,7 +296,9 @@ jobs:
     # WSL2/WSLg, a clean Ubuntu base distro, Python, and permission to import
     # disposable WSL distros for the installation smoke test.
     runs-on: [self-hosted, Windows, X64]
-    needs: release-smoke-assets
+    needs:
+      - release-smoke-assets
+      - windows-control-center
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
@@ -272,10 +307,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - uses: actions/download-artifact@v4
         with:
           name: release-smoke-assets
           path: release-smoke-assets
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-control-center
+          path: windows-control-center
+
+      - name: Inject Windows Control Center smoke assets
+        shell: pwsh
+        run: |
+          $source = Get-ChildItem windows-control-center\BubbleHub-*-control-center-x64.exe | Select-Object -First 1
+          foreach ($label in @("previous", "current")) {
+            $tag = (Get-Content -Raw "release-smoke-assets\$label\VERSION_TAG").Trim()
+            $version = $tag.TrimStart("v")
+            Copy-Item $source.FullName "release-smoke-assets\$tag\BubbleHub-$version-control-center-x64.exe" -Force
+          }
 
       - name: Validate Windows ${{ matrix.method }} release installation
         shell: pwsh
